@@ -1,0 +1,154 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            target: 'aarch64-apple-darwin'
+            rust_target: 'aarch64-apple-darwin'
+            binary_name: 'rustfs-macos-aarch64'
+            artifact_name: 'RustFS-Launcher-macOS-aarch64'
+
+          - platform: 'macos-13'
+            target: 'x86_64-apple-darwin'
+            rust_target: 'x86_64-apple-darwin'
+            binary_name: 'rustfs-macos-x86_64'
+            artifact_name: 'RustFS-Launcher-macOS-x86_64'
+
+          - platform: 'windows-latest'
+            target: 'x86_64-pc-windows-msvc'
+            rust_target: 'x86_64-pc-windows-msvc'
+            binary_name: 'rustfs-windows-x86_64.exe'
+            artifact_name: 'RustFS-Launcher-Windows-x86_64'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install trunk
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo install trunk
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download RustFS binary (macOS aarch64)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          mkdir -p src-tauri/binaries
+          curl -L -o rustfs-macos-aarch64.zip https://dl.rustfs.com/artifacts/rustfs/release/rustfs-macos-aarch64-latest.zip
+          unzip -q rustfs-macos-aarch64.zip -d rustfs-temp
+          cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-aarch64
+          chmod +x src-tauri/binaries/rustfs-macos-aarch64
+          rm -rf rustfs-temp rustfs-macos-aarch64.zip
+
+      - name: Download RustFS binary (macOS x86_64)
+        if: matrix.platform == 'macos-13'
+        run: |
+          mkdir -p src-tauri/binaries
+          curl -L -o rustfs-macos-x86_64.zip https://dl.rustfs.com/artifacts/rustfs/release/rustfs-macos-x86_64-latest.zip
+          unzip -q rustfs-macos-x86_64.zip -d rustfs-temp
+          cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-x86_64
+          chmod +x src-tauri/binaries/rustfs-macos-x86_64
+          rm -rf rustfs-temp rustfs-macos-x86_64.zip
+
+      - name: Download RustFS binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri\binaries
+          Invoke-WebRequest -Uri "https://dl.rustfs.com/artifacts/rustfs/release/rustfs-windows-x86_64-latest.zip" -OutFile "rustfs-windows-x86_64.zip"
+          Expand-Archive -Path "rustfs-windows-x86_64.zip" -DestinationPath "rustfs-temp" -Force
+          Copy-Item "rustfs-temp\rustfs.exe" -Destination "src-tauri\binaries\rustfs-windows-x86_64.exe"
+          Remove-Item -Recurse -Force rustfs-temp, rustfs-windows-x86_64.zip
+
+      - name: Build Tauri application
+        run: cargo tauri build --target ${{ matrix.rust_target }}
+
+      - name: Prepare artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p artifacts
+          if [ -d "src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg" ]; then
+            cp src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg artifacts/ || true
+          fi
+          if [ -d "src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos" ]; then
+            cd src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos
+            zip -r "$GITHUB_WORKSPACE/artifacts/${{ matrix.artifact_name }}.app.zip" *.app
+          fi
+
+      - name: Prepare artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          $msiFiles = Get-ChildItem -Path "src-tauri/target/${{ matrix.rust_target }}/release/bundle/msi" -Filter "*.msi" -ErrorAction SilentlyContinue
+          if ($msiFiles) {
+            Copy-Item $msiFiles.FullName -Destination artifacts/
+          }
+          $exeFiles = Get-ChildItem -Path "src-tauri/target/${{ matrix.rust_target }}/release/bundle/nsis" -Filter "*.exe" -ErrorAction SilentlyContinue
+          if ($exeFiles) {
+            Copy-Item $exeFiles.FullName -Destination artifacts/
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

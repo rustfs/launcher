@@ -7,3 +7,9 @@
 src-tauri/binaries/rustfs-*
 !src-tauri/binaries/.gitkeep
 temp_downloads/
+
+# CI/CD artifacts
+artifacts/
+*.dmg
+*.msi
+*.app.zip
