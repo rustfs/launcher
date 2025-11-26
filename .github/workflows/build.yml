@@ -148,7 +148,7 @@ jobs:
           Remove-Item -Recurse -Force rustfs-temp, rustfs-windows-x86_64.zip
 
       - name: Build Tauri application
-        run: cargo tauri build --target ${{ matrix.rust_target }}
+        run: cargo tauri build --target ${{ matrix.rust_target }} --target-dir target
 
       - name: Prepare and rename artifacts (macOS)
         if: runner.os == 'macOS'
@@ -163,19 +163,35 @@ jobs:
           # Format: rustfs-launcher-{os}-{arch}-{version}
           ARTIFACT_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-${VERSION}"
 
-          # 构建产物目录（兼容默认路径和显式 target 路径）
-          DMG_DIR="src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg"
-          BUNDLE_DIR="src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos"
-          if [ ! -d "$DMG_DIR" ]; then
-            DMG_DIR="src-tauri/target/release/bundle/dmg"
-          fi
-          if [ ! -d "$BUNDLE_DIR" ]; then
-            BUNDLE_DIR="src-tauri/target/release/bundle/macos"
-          fi
+          # 构建产物目录（兼容 src-tauri/target 与 workspace target）
+          DMG_DIR=""
+          BUNDLE_DIR=""
+          DMG_CANDIDATES=(
+            "src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg"
+            "target/${{ matrix.rust_target }}/release/bundle/dmg"
+            "src-tauri/target/release/bundle/dmg"
+            "target/release/bundle/dmg"
+          )
+          BUNDLE_CANDIDATES=(
+            "src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos"
+            "target/${{ matrix.rust_target }}/release/bundle/macos"
+            "src-tauri/target/release/bundle/macos"
+            "target/release/bundle/macos"
+          )
 
-          if [ ! -d "$DMG_DIR" ] && [ ! -d "$BUNDLE_DIR" ]; then
-            echo "❌ 未找到打包输出目录：$DMG_DIR 或 $BUNDLE_DIR"
-            ls -la src-tauri/target || true
+          for d in "${DMG_CANDIDATES[@]}"; do
+            if [ -d "$d" ]; then DMG_DIR="$d"; break; fi
+          done
+          for d in "${BUNDLE_CANDIDATES[@]}"; do
+            if [ -d "$d" ]; then BUNDLE_DIR="$d"; break; fi
+          done
+
+          if [ -z "$DMG_DIR" ] && [ -z "$BUNDLE_DIR" ]; then
+            echo "❌ 未找到打包输出目录，尝试过："
+            printf ' - %s\n' "${DMG_CANDIDATES[@]}" "${BUNDLE_CANDIDATES[@]}"
+            echo "目录列表："
+            ls -la src-tauri || true
+            ls -la target || true
             exit 1
           fi
 
