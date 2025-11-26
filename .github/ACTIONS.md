@@ -66,7 +66,7 @@
 
 4. **等待编译完成**
 
-   Release 发布后，GitHub Actions 会自动触发编译。
+   当 Release 发布（published）后，GitHub Actions 会自动触发编译。
    访问 GitHub Actions 页面查看编译进度:
    ```
    https://github.com/YOUR_USERNAME/YOUR_REPO/actions
