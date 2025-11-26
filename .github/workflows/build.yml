@@ -3,32 +3,84 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'
+      - '*.*.*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
+  # Build strategy check - determine build type and version
+  build-check:
+    name: Build Strategy Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      version: ${{ steps.check.outputs.version }}
+      is_release: ${{ steps.check.outputs.is_release }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine build strategy
+        id: check
+        run: |
+          should_build=true
+          version=""
+          is_release=false
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            # Release event - get version from release tag
+            version="${{ github.event.release.tag_name }}"
+            is_release=true
+            echo "📦 Release build detected: $version"
+          elif [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
+            # Tag push - get version from tag
+            version="${GITHUB_REF#refs/tags/}"
+            is_release=true
+            echo "🏷️ Tag build detected: $version"
+          else
+            # Manual trigger or other
+            version="dev-$(git rev-parse --short HEAD)"
+            echo "🛠️ Development build detected: $version"
+          fi
+
+          echo "should_build=$should_build" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "is_release=$is_release" >> $GITHUB_OUTPUT
+
+          echo "📊 Build Summary:"
+          echo "  - Should build: $should_build"
+          echo "  - Version: $version"
+          echo "  - Is release: $is_release"
+
   build:
+    name: Build
+    needs: build-check
+    if: needs.build-check.outputs.should_build == 'true'
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: 'macos-latest'
-            target: 'aarch64-apple-darwin'
             rust_target: 'aarch64-apple-darwin'
-            binary_name: 'rustfs-macos-aarch64'
-            artifact_name: 'RustFS-Launcher-macOS-aarch64'
+            os_name: 'macos'
+            arch: 'aarch64'
 
           - platform: 'macos-13'
-            target: 'x86_64-apple-darwin'
             rust_target: 'x86_64-apple-darwin'
-            binary_name: 'rustfs-macos-x86_64'
-            artifact_name: 'RustFS-Launcher-macOS-x86_64'
+            os_name: 'macos'
+            arch: 'x86_64'
 
           - platform: 'windows-latest'
-            target: 'x86_64-pc-windows-msvc'
             rust_target: 'x86_64-pc-windows-msvc'
-            binary_name: 'rustfs-windows-x86_64.exe'
-            artifact_name: 'RustFS-Launcher-Windows-x86_64'
+            os_name: 'windows'
+            arch: 'x86_64'
 
     runs-on: ${{ matrix.platform }}
 
@@ -94,44 +146,157 @@ jobs:
       - name: Build Tauri application
         run: cargo tauri build --target ${{ matrix.rust_target }}
 
-      - name: Prepare artifacts (macOS)
+      - name: Prepare and rename artifacts (macOS)
         if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ needs.build-check.outputs.version }}
         run: |
           mkdir -p artifacts
+
+          # Format: rustfs-launcher-{os}-{arch}-{version}
+          ARTIFACT_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-${VERSION}"
+
+          # Copy and rename DMG
           if [ -d "src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg" ]; then
-            cp src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg artifacts/ || true
-          fi
-          if [ -d "src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos" ]; then
-            cd src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos
-            zip -r "$GITHUB_WORKSPACE/artifacts/${{ matrix.artifact_name }}.app.zip" *.app
+            for dmg in src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg; do
+              if [ -f "$dmg" ]; then
+                cp "$dmg" "artifacts/${ARTIFACT_PREFIX}.dmg"
+                echo "✅ Created: ${ARTIFACT_PREFIX}.dmg"
+              fi
+            done
           fi
 
-      - name: Prepare artifacts (Windows)
+          # Create and rename app.zip
+          if [ -d "src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos" ]; then
+            cd src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos
+            zip -r "$GITHUB_WORKSPACE/artifacts/${ARTIFACT_PREFIX}.app.zip" *.app
+            echo "✅ Created: ${ARTIFACT_PREFIX}.app.zip"
+          fi
+
+          # Create latest version files
+          cd "$GITHUB_WORKSPACE/artifacts"
+          LATEST_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
+          for file in rustfs-launcher-*-${VERSION}.*; do
+            if [ -f "$file" ]; then
+              ext="${file##*.}"
+              cp "$file" "${LATEST_PREFIX}.${ext}"
+              echo "✅ Created latest: ${LATEST_PREFIX}.${ext}"
+            fi
+          done
+
+          ls -la artifacts/
+
+      - name: Prepare and rename artifacts (Windows)
         if: runner.os == 'Windows'
+        env:
+          VERSION: ${{ needs.build-check.outputs.version }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
+
+          # Format: rustfs-launcher-{os}-{arch}-{version}
+          $ARTIFACT_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-$env:VERSION"
+
+          # Copy and rename MSI
           $msiFiles = Get-ChildItem -Path "src-tauri/target/${{ matrix.rust_target }}/release/bundle/msi" -Filter "*.msi" -ErrorAction SilentlyContinue
           if ($msiFiles) {
-            Copy-Item $msiFiles.FullName -Destination artifacts/
+            Copy-Item $msiFiles[0].FullName -Destination "artifacts/${ARTIFACT_PREFIX}.msi"
+            Write-Host "✅ Created: ${ARTIFACT_PREFIX}.msi"
           }
+
+          # Copy and rename EXE (NSIS installer)
           $exeFiles = Get-ChildItem -Path "src-tauri/target/${{ matrix.rust_target }}/release/bundle/nsis" -Filter "*.exe" -ErrorAction SilentlyContinue
           if ($exeFiles) {
-            Copy-Item $exeFiles.FullName -Destination artifacts/
+            Copy-Item $exeFiles[0].FullName -Destination "artifacts/${ARTIFACT_PREFIX}-setup.exe"
+            Write-Host "✅ Created: ${ARTIFACT_PREFIX}-setup.exe"
           }
+
+          # Create latest version files
+          $LATEST_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
+          Get-ChildItem -Path "artifacts" -Filter "rustfs-launcher-*-$env:VERSION.*" | ForEach-Object {
+            $ext = $_.Extension
+            $latestName = "${LATEST_PREFIX}${ext}"
+            if ($_.Name -like "*-setup.exe") {
+              $latestName = "${LATEST_PREFIX}-setup.exe"
+            }
+            Copy-Item $_.FullName -Destination "artifacts/$latestName"
+            Write-Host "✅ Created latest: $latestName"
+          }
+
+          Get-ChildItem -Path artifacts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}
           path: artifacts/*
           if-no-files-found: error
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload to Aliyun OSS
+        if: needs.build-check.outputs.is_release == 'true'
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.ALICLOUDOSS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.ALICLOUDOSS_KEY_SECRET }}
+          OSS_REGION: cn-beijing
+          OSS_ENDPOINT: https://oss-cn-beijing.aliyuncs.com
+        shell: bash
+        run: |
+          if [[ -z "$OSS_ACCESS_KEY_ID" ]]; then
+            echo "⚠️ OSS credentials not available, skipping OSS upload"
+            exit 0
+          fi
 
+          # Install ossutil
+          OSSUTIL_VERSION="2.1.1"
+          case "${{ matrix.os_name }}" in
+            macos)
+              if [[ "$(uname -m)" == "arm64" ]]; then
+                ARCH="arm64"
+              else
+                ARCH="amd64"
+              fi
+              OSSUTIL_ZIP="ossutil-${OSSUTIL_VERSION}-mac-${ARCH}.zip"
+              OSSUTIL_DIR="ossutil-${OSSUTIL_VERSION}-mac-${ARCH}"
+
+              curl -o "$OSSUTIL_ZIP" "https://gosspublic.alicdn.com/ossutil/v2/${OSSUTIL_VERSION}/${OSSUTIL_ZIP}"
+              unzip "$OSSUTIL_ZIP"
+              mv "${OSSUTIL_DIR}/ossutil" /usr/local/bin/
+              rm -rf "$OSSUTIL_DIR" "$OSSUTIL_ZIP"
+              chmod +x /usr/local/bin/ossutil
+              OSSUTIL_BIN=ossutil
+              ;;
+            windows)
+              OSSUTIL_ZIP="ossutil-${OSSUTIL_VERSION}-windows-amd64.zip"
+              OSSUTIL_DIR="ossutil-${OSSUTIL_VERSION}-windows-amd64"
+
+              curl -o "$OSSUTIL_ZIP" "https://gosspublic.alicdn.com/ossutil/v2/${OSSUTIL_VERSION}/${OSSUTIL_ZIP}"
+              unzip "$OSSUTIL_ZIP"
+              mv "${OSSUTIL_DIR}/ossutil.exe" ./ossutil.exe
+              rm -rf "$OSSUTIL_DIR" "$OSSUTIL_ZIP"
+              OSSUTIL_BIN=./ossutil.exe
+              ;;
+          esac
+
+          OSS_PATH="oss://rustfs-artifacts/artifacts/rustfs-launcher/release/"
+
+          # Upload all artifacts to OSS
+          echo "📤 Uploading artifacts to $OSS_PATH..."
+          for file in artifacts/*; do
+            if [[ -f "$file" ]]; then
+              echo "Uploading: $file to $OSS_PATH..."
+              $OSSUTIL_BIN cp "$file" "$OSS_PATH" --force
+              echo "✅ Uploaded: $file"
+            fi
+          done
+
+          echo "✅ OSS upload completed successfully"
+
+  # Upload release assets
+  upload-release-assets:
+    name: Upload Release Assets
+    needs: [build-check, build]
+    runs-on: ubuntu-latest
+    if: needs.build-check.outputs.is_release == 'true'
     permissions:
       contents: write
 
@@ -140,15 +305,52 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: rustfs-launcher-*
+          merge-multiple: true
 
       - name: Display structure of downloaded files
         run: ls -R artifacts
 
-      - name: Create Release
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+
+          # Copy all artifacts
+          if [ -d "artifacts" ] && [ "$(ls -A artifacts)" ]; then
+            cp artifacts/* release-assets/
+            echo "✅ Artifacts copied to release-assets"
+          else
+            echo "⚠️ No artifacts found to copy"
+          fi
+
+          # Generate checksums
+          cd release-assets
+          if ls *.dmg *.zip *.msi *.exe 2>/dev/null; then
+            sha256sum * > SHA256SUMS
+            echo "✅ SHA256SUMS generated"
+          else
+            echo "⚠️ No files found for checksum generation"
+          fi
+
+          echo "📦 Release assets:"
+          ls -la
+
+      - name: Upload to GitHub Release (release event)
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to GitHub Release (tag push)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build-check.outputs.version }}
+          files: release-assets/*
           draft: false
           prerelease: false
-          files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

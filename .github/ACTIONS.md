@@ -19,7 +19,8 @@
 ### 2. Build and Release 工作流 (`.github/workflows/build.yml`)
 
 **触发条件:**
-- 推送以 `v` 开头的 tag (例如: `v0.1.0`, `v1.0.0`)
+- 推送 tag（例如: `0.1.0`, `v1.0.0`）
+- 发布 Release（当 Release 状态变为 published 时）
 - 手动触发 (workflow_dispatch)
 
 **支持平台:**
@@ -30,6 +31,14 @@
 **产物类型:**
 - macOS: `.dmg` 安装包和 `.app.zip` 压缩包
 - Windows: `.msi` 安装包和 `.exe` 安装程序
+
+**产物命名格式:**
+- `rustfs-launcher-{platform}-{arch}-{version}.{ext}` (例如: `rustfs-launcher-macos-aarch64-v0.1.0.dmg`)
+- `rustfs-launcher-{platform}-{arch}-latest.{ext}` (最新版本链接)
+
+**产物上传位置:**
+- GitHub Release Assets
+- 阿里云 OSS: `oss://rustfs-artifacts/artifacts/rustfs-launcher/release/`
 
 ## 使用方法
 
@@ -50,14 +59,29 @@
    git push origin main
    ```
 
-3. **创建并推送 tag**
+3. **发布方式（选择其一）**
+
+   **方式一：推送 tag（自动创建 Release）**
    ```bash
    git tag v0.1.0
    git push origin v0.1.0
    ```
 
+   **方式二：通过 GitHub Web 界面创建 Release**
+   - 访问仓库的 "Releases" 页面
+   - 点击 "Draft a new release"
+   - 创建新的 tag（如 `v0.1.0`）或选择已有 tag
+   - 填写 Release 标题和描述
+   - 点击 "Publish release"
+
+   **方式三：通过 GitHub CLI**
+   ```bash
+   gh release create v0.1.0 --title "v0.1.0" --notes "Release notes"
+   ```
+
 4. **等待编译完成**
 
+   当 tag 推送或 Release 发布（published）后，GitHub Actions 会自动触发编译。
    访问 GitHub Actions 页面查看编译进度:
    ```
    https://github.com/YOUR_USERNAME/YOUR_REPO/actions
@@ -65,7 +89,9 @@
 
 5. **发布完成**
 
-   编译成功后会自动创建 GitHub Release，包含所有平台的安装包。
+   编译成功后会自动:
+   - 将构建产物上传到 Release Assets
+   - 将构建产物上传到阿里云 OSS (`oss://rustfs-artifacts/artifacts/rustfs-launcher/release/`)
 
 ### 手动触发编译
 
@@ -79,17 +105,23 @@
 编译完成后，会生成以下文件:
 
 ```
-RustFS-Launcher-macOS-aarch64/
-  ├── RustFS Launcher.dmg
-  └── RustFS-Launcher-macOS-aarch64.app.zip
+rustfs-launcher-macos-aarch64/
+  ├── rustfs-launcher-macos-aarch64-v0.1.0.dmg
+  ├── rustfs-launcher-macos-aarch64-v0.1.0.app.zip
+  ├── rustfs-launcher-macos-aarch64-latest.dmg
+  └── rustfs-launcher-macos-aarch64-latest.app.zip
 
-RustFS-Launcher-macOS-x86_64/
-  ├── RustFS Launcher.dmg
-  └── RustFS-Launcher-macOS-x86_64.app.zip
+rustfs-launcher-macos-x86_64/
+  ├── rustfs-launcher-macos-x86_64-v0.1.0.dmg
+  ├── rustfs-launcher-macos-x86_64-v0.1.0.app.zip
+  ├── rustfs-launcher-macos-x86_64-latest.dmg
+  └── rustfs-launcher-macos-x86_64-latest.app.zip
 
-RustFS-Launcher-Windows-x86_64/
-  ├── RustFS Launcher_x.x.x_x64.msi
-  └── RustFS Launcher_x.x.x_x64-setup.exe
+rustfs-launcher-windows-x86_64/
+  ├── rustfs-launcher-windows-x86_64-v0.1.0.msi
+  ├── rustfs-launcher-windows-x86_64-v0.1.0-setup.exe
+  ├── rustfs-launcher-windows-x86_64-latest.msi
+  └── rustfs-launcher-windows-x86_64-latest-setup.exe
 ```
 
 ## 常见问题
