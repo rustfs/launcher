@@ -19,7 +19,7 @@
 ### 2. Build and Release 工作流 (`.github/workflows/build.yml`)
 
 **触发条件:**
-- 推送以 `v` 开头的 tag (例如: `v0.1.0`, `v1.0.0`)
+- 发布 Release（当 Release 状态变为 published 时）
 - 手动触发 (workflow_dispatch)
 
 **支持平台:**
@@ -50,14 +50,23 @@
    git push origin main
    ```
 
-3. **创建并推送 tag**
+3. **在 GitHub 上创建 Release**
+
+   方法一：通过 GitHub Web 界面
+   - 访问仓库的 "Releases" 页面
+   - 点击 "Draft a new release"
+   - 创建新的 tag（如 `v0.1.0`）或选择已有 tag
+   - 填写 Release 标题和描述
+   - 点击 "Publish release"
+
+   方法二：通过 GitHub CLI
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   gh release create v0.1.0 --title "v0.1.0" --notes "Release notes"
    ```
 
 4. **等待编译完成**
 
+   Release 发布后，GitHub Actions 会自动触发编译。
    访问 GitHub Actions 页面查看编译进度:
    ```
    https://github.com/YOUR_USERNAME/YOUR_REPO/actions
@@ -65,7 +74,7 @@
 
 5. **发布完成**
 
-   编译成功后会自动创建 GitHub Release，包含所有平台的安装包。
+   编译成功后会自动将构建产物上传到 Release Assets 中。
 
 ### 手动触发编译
 
