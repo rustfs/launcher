@@ -3,10 +3,15 @@ name: Build and Release
 on:
   push:
     tags:
-      - '*.*.*'
+      - "*.*.*"
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g., 0.1.0). If provided, will build in release mode."
+        required: false
+        type: string
 
 jobs:
   # Build strategy check - determine build type and version
@@ -42,8 +47,13 @@ jobs:
             version="${GITHUB_REF#refs/tags/}"
             is_release=true
             echo "🏷️ Tag build detected: $version"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            # Manual trigger with tag input - treat as release
+            version="${{ github.event.inputs.tag }}"
+            is_release=true
+            echo "🏷️ Manual release build detected: $version"
           else
-            # Manual trigger or other
+            # Manual trigger without tag or other
             version="dev-$(git rev-parse --short HEAD)"
             echo "🛠️ Development build detected: $version"
           fi
@@ -67,20 +77,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
-            rust_target: 'aarch64-apple-darwin'
-            os_name: 'macos'
-            arch: 'aarch64'
+          - platform: "macos-latest"
+            rust_target: "aarch64-apple-darwin"
+            os_name: "macos"
+            arch: "aarch64"
 
-          - platform: 'macos-13'
-            rust_target: 'x86_64-apple-darwin'
-            os_name: 'macos'
-            arch: 'x86_64'
+          - platform: "macos-13"
+            rust_target: "x86_64-apple-darwin"
+            os_name: "macos"
+            arch: "x86_64"
 
-          - platform: 'windows-latest'
-            rust_target: 'x86_64-pc-windows-msvc'
-            os_name: 'windows'
-            arch: 'x86_64'
+          - platform: "windows-latest"
+            rust_target: "x86_64-pc-windows-msvc"
+            os_name: "windows"
+            arch: "x86_64"
 
     runs-on: ${{ matrix.platform }}
 
@@ -115,7 +125,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Download RustFS binary (macOS aarch64)
         if: matrix.platform == 'macos-latest'
