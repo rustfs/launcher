@@ -235,7 +235,10 @@ jobs:
           $ARTIFACT_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-$env:VERSION"
 
           # 调试：列出可能的构建输出目录
-          $targetPath = "src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          $targetPath = "target/${{ matrix.rust_target }}/release/bundle"
+          if (-not (Test-Path $targetPath)) {
+            $targetPath = "src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          }
           Write-Host "🔍 搜索构建产物目录: $targetPath"
           if (Test-Path $targetPath) {
             Write-Host "📁 Bundle 目录存在，内容："
