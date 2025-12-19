@@ -83,16 +83,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest"
-            rust_target: "aarch64-apple-darwin"
-            os_name: "macos"
-            arch: "aarch64"
-
-          - platform: "macos-13"
-            rust_target: "x86_64-apple-darwin"
-            os_name: "macos"
-            arch: "x86_64"
-
           - platform: "windows-latest"
             rust_target: "x86_64-pc-windows-msvc"
             os_name: "windows"
