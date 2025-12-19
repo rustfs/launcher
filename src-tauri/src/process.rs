@@ -213,6 +213,13 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
         cmd.arg("--console-enable");
     }
 
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
     add_app_log(format!("Spawning command: {:?}", cmd));
     let mut child = cmd
         .stdout(Stdio::piped())

@@ -250,17 +250,17 @@ jobs:
           $artifactCount = 0
 
           # Copy and rename MSI
-          $msiPath = "$targetPath/msi"
-          Write-Host "🔍 搜索 MSI 文件: $msiPath"
-          $msiFiles = Get-ChildItem -Path $msiPath -Filter "*.msi" -ErrorAction SilentlyContinue
-          if ($msiFiles) {
-            $destPath = "artifacts/$ARTIFACT_PREFIX.msi"
-            Copy-Item $msiFiles[0].FullName -Destination $destPath
-            Write-Host "✅ Created: $destPath"
-            $artifactCount++
-          } else {
-            Write-Host "⚠️ 未找到 MSI 文件在: $msiPath"
-          }
+          # $msiPath = "$targetPath/msi"
+          # Write-Host "🔍 搜索 MSI 文件: $msiPath"
+          # $msiFiles = Get-ChildItem -Path $msiPath -Filter "*.msi" -ErrorAction SilentlyContinue
+          # if ($msiFiles) {
+          #   $destPath = "artifacts/$ARTIFACT_PREFIX.msi"
+          #   Copy-Item $msiFiles[0].FullName -Destination $destPath
+          #   Write-Host "✅ Created: $destPath"
+          #   $artifactCount++
+          # } else {
+          #   Write-Host "⚠️ 未找到 MSI 文件在: $msiPath"
+          # }
 
           # Copy and rename EXE (NSIS installer)
           $nsisPath = "$targetPath/nsis"
@@ -293,6 +293,10 @@ jobs:
             Copy-Item $_.FullName -Destination "artifacts/$latestName"
             Write-Host "✅ Created latest: $latestName"
           }
+
+          # 只保留 NSIS EXE 文件，删除 MSI 文件
+          Get-ChildItem -Path "artifacts" -Filter "*.msi" | Remove-Item -Force
+          Write-Host "🗑️ 已删除 MSI 文件，只保留 EXE 安装包"
 
           Write-Host "📦 最终 artifacts 列表："
           Get-ChildItem -Path artifacts | Format-Table Name, Length -AutoSize
