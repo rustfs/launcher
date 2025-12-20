@@ -67,7 +67,19 @@ make check-clippy   # Run Clippy linter
 make check-frontend # Build frontend
 make check-test     # Run tests
 make fix-fmt        # Auto-fix formatting
+make check-upstream # Check for new upstream rustfs/rustfs versions
 ```
+
+### Automated Upstream Sync
+
+The project automatically syncs with upstream [rustfs/rustfs](https://github.com/rustfs/rustfs) releases:
+
+- **Daily Check**: A scheduled GitHub Actions workflow runs daily at UTC 6:00 (Beijing 14:00) to check for new versions
+- **Automatic Build**: When a new version is detected, the workflow automatically creates a git tag and triggers the build process
+- **Manual Check**: Run `make check-upstream` locally to check for new versions
+- **Manual Trigger**: Can be manually triggered via GitHub Actions if needed
+
+This ensures the launcher always stays up-to-date with the latest RustFS releases without manual intervention.
 
 ### CI/CD
 

@@ -15,6 +15,24 @@ Use this guide when contributing to RustFS Launcher; it highlights the project l
 - `trunk serve --port 1421`: run the Leptos client in a browser-only workflow using the `Trunk.toml` settings.
 - `cargo tauri build`: produce distributable desktop bundles.
 - `cargo fmt --all` and `cargo clippy --workspace --all-targets`: enforce formatting and linting before pushing.
+- `./scripts/check-upstream-version.sh`: check for new versions from upstream rustfs/rustfs repository.
+
+## Automated Build & Release
+The repository includes automated workflows to keep in sync with upstream rustfs/rustfs releases:
+
+### Upstream Version Sync (`.github/workflows/upstream-sync.yml`)
+- **Scheduled Check**: Runs daily at UTC 6:00 (Beijing 14:00) to check for new rustfs/rustfs releases.
+- **Automatic Trigger**: When a new upstream version is detected, it automatically creates a corresponding git tag and triggers the build workflow.
+- **Manual Trigger**: Can be manually triggered via GitHub Actions with an optional `force_build` parameter.
+- **Version Tracking**: Compares upstream release tags with local repository tags to detect updates.
+
+### Build Workflow (`.github/workflows/build.yml`)
+- Triggered automatically by new tags created by the upstream sync workflow.
+- Builds platform-specific installers for Windows (macOS support can be uncommented).
+- Downloads the latest RustFS binaries from `dl.rustfs.com` during the build process.
+- Produces distributable packages (DMG, MSI, AppImage, etc.) as GitHub release artifacts.
+
+This automation ensures that whenever rustfs/rustfs publishes a new version, this launcher repository will automatically build and release updated installers within 24 hours.
 
 ## Coding Style & Naming Conventions
 Use idiomatic Rust formatting (4-space indentation, `snake_case` modules/functions, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants) and guard changes with `cargo fmt`.

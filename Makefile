@@ -1,4 +1,4 @@
-.PHONY: help install-act test-ci test-ci-full clean pre-commit check-fmt check-clippy check-test check-frontend
+.PHONY: help install-act test-ci test-ci-full clean pre-commit check-fmt check-clippy check-test check-frontend check-upstream
 
 # Default target
 help:
@@ -7,6 +7,7 @@ help:
 	@echo "Available targets:"
 	@echo "  make help          - Show this help message"
 	@echo "  make pre-commit    - Run all pre-commit checks (fmt, clippy, frontend, tests)"
+	@echo "  make check-upstream - Check for new upstream rustfs/rustfs versions"
 	@echo ""
 	@echo "Local checks:"
 	@echo "  make check-fmt     - Check Rust code formatting"
@@ -179,6 +180,11 @@ clean:
 	@rm -rf ~/.cache/act
 	@rm -rf /tmp/act-*
 	@echo "Cache cleaned!"
+
+# Check for new upstream versions
+check-upstream:
+	@echo "Checking upstream rustfs/rustfs for new versions..."
+	@./scripts/check-upstream-version.sh
 
 # Run specific job from CI workflow
 test-ci-job: check-act

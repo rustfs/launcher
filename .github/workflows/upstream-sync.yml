@@ -1,0 +1,138 @@
+name: Upstream Sync
+
+# 当上游 rustfs/rustfs 发布新版本时，自动触发构建
+on:
+  # 定时检查上游版本（每天UTC时间6点，北京时间14点）
+  schedule:
+    - cron: '0 6 * * *'
+  
+  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: '强制构建（即使版本未变化）'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  check-upstream:
+    name: 检查上游版本
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 需要写权限来创建 tag
+    outputs:
+      has_new_version: ${{ steps.compare.outputs.has_new_version }}
+      upstream_version: ${{ steps.upstream.outputs.version }}
+      should_build: ${{ steps.compare.outputs.should_build }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 获取上游最新版本
+        id: upstream
+        run: |
+          # 从 rustfs/rustfs GitHub Releases 获取最新版本（包括 pre-release）
+          UPSTREAM_VERSION=$(curl -s https://api.github.com/repos/rustfs/rustfs/releases | jq -r '.[0].tag_name')
+          
+          if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "null" ]; then
+            echo "❌ 无法获取上游版本"
+            exit 1
+          fi
+          
+          echo "version=$UPSTREAM_VERSION" >> $GITHUB_OUTPUT
+          echo "✅ 上游最新版本: $UPSTREAM_VERSION"
+      
+      - name: 获取当前仓库版本
+        id: current
+        run: |
+          # 从最新的 git tag 获取当前版本
+          CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 当前版本: $CURRENT_VERSION"
+      
+      - name: 比较版本
+        id: compare
+        run: |
+          UPSTREAM="${{ steps.upstream.outputs.version }}"
+          CURRENT="${{ steps.current.outputs.version }}"
+          FORCE="${{ github.event.inputs.force_build }}"
+          
+          echo "上游版本: $UPSTREAM"
+          echo "当前版本: $CURRENT"
+          
+          if [ "$FORCE" = "true" ]; then
+            echo "🔨 强制构建模式"
+            echo "has_new_version=true" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "$UPSTREAM" != "$CURRENT" ]; then
+            echo "🆕 发现新版本: $UPSTREAM (当前: $CURRENT)"
+            echo "has_new_version=true" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ 已是最新版本"
+            echo "has_new_version=false" >> $GITHUB_OUTPUT
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 创建新版本标签
+        if: steps.compare.outputs.has_new_version == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPSTREAM_VERSION="${{ steps.upstream.outputs.version }}"
+          
+          # 配置 git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 检查标签是否已存在
+          if git rev-parse "$UPSTREAM_VERSION" >/dev/null 2>&1; then
+            echo "⚠️  标签 $UPSTREAM_VERSION 已存在，跳过创建"
+          else
+            # 创建并推送标签
+            git tag -a "$UPSTREAM_VERSION" -m "Sync with upstream rustfs/rustfs $UPSTREAM_VERSION"
+            git push origin "$UPSTREAM_VERSION"
+            echo "✅ 已创建并推送标签: $UPSTREAM_VERSION"
+          fi
+
+  trigger-build:
+    name: 触发构建
+    needs: check-upstream
+    if: needs.check-upstream.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 触发构建工作流
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPSTREAM_VERSION="${{ needs.check-upstream.outputs.upstream_version }}"
+          
+          echo "🚀 触发构建版本: $UPSTREAM_VERSION"
+          
+          # 触发 build.yml workflow
+          gh workflow run build.yml \
+            --ref main \
+            -f tag="$UPSTREAM_VERSION"
+          
+          echo "✅ 构建工作流已触发"
+      
+      - name: 发送通知
+        if: always()
+        run: |
+          UPSTREAM_VERSION="${{ needs.check-upstream.outputs.upstream_version }}"
+          echo "📢 构建通知："
+          echo "  - 上游版本: $UPSTREAM_VERSION"
+          echo "  - 工作流状态: ${{ job.status }}"
+          echo "  - 仓库: ${{ github.repository }}"
+          echo "  - 运行ID: ${{ github.run_id }}"
