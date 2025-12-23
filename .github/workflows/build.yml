@@ -286,12 +286,22 @@ jobs:
           $LATEST_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
           Get-ChildItem -Path "artifacts" -Filter "rustfs-launcher-*-$env:VERSION.*" | ForEach-Object {
             $ext = $_.Extension
-            $latestName = "$LATEST_PREFIX$ext"
+            
             if ($_.Name -like "*-setup.exe") {
-              $latestName = "$LATEST_PREFIX-setup.exe"
+              # Create the -setup.exe version
+              $setupName = "$LATEST_PREFIX-setup.exe"
+              Copy-Item $_.FullName -Destination "artifacts/$setupName"
+              Write-Host "✅ Created latest: $setupName"
+
+              # Create the plain .exe version (as requested)
+              $plainName = "$LATEST_PREFIX.exe"
+              Copy-Item $_.FullName -Destination "artifacts/$plainName"
+              Write-Host "✅ Created latest: $plainName"
+            } else {
+              $latestName = "$LATEST_PREFIX$ext"
+              Copy-Item $_.FullName -Destination "artifacts/$latestName"
+              Write-Host "✅ Created latest: $latestName"
             }
-            Copy-Item $_.FullName -Destination "artifacts/$latestName"
-            Write-Host "✅ Created latest: $latestName"
           }
 
           # 只保留 NSIS EXE 文件，删除 MSI 文件
