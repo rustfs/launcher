@@ -11,6 +11,9 @@ pub enum Error {
     #[error("Data path does not exist: {0}")]
     DataPathNotExist(String),
 
+    #[error("API port and console port must be different")]
+    PortConflict,
+
     #[error("RustFS binary not found at {0}")]
     BinaryNotFound(String),
 

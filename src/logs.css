@@ -1,150 +1,157 @@
-/* This file is injected into the app, so it can use variables from styles.css */
-
 .logs-section {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background-color: #000000; /* Deep black for terminal feel */
-    overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at top right, rgba(255, 138, 61, 0.09), transparent 22%),
+    linear-gradient(180deg, rgba(5, 10, 19, 0.94), rgba(3, 7, 14, 0.98));
 }
 
 .log-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .log-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: #18181b;
-    border-bottom: 1px solid #333;
-    padding-right: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(151, 178, 214, 0.12);
+  background: rgba(12, 20, 34, 0.78);
+  backdrop-filter: blur(14px);
 }
 
 .log-tabs {
-    display: flex;
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .log-tab {
-    background: transparent;
-    border: none;
-    color: #71717a;
-    padding: 10px 20px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: color 0.2s, background-color 0.2s;
-    border-right: 1px solid #333;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .log-tab:hover {
-    color: #d4d4d8;
-    background-color: #27272a;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .log-tab.active {
-    color: #fff;
-    background-color: #000; /* Matches log output bg */
-    border-top: 2px solid var(--accent-color);
+  color: #0d1725;
+  background: linear-gradient(135deg, var(--accent-color), #ffbc79);
 }
 
 .log-actions {
-    display: flex;
-    align-items: center;
-    gap: 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .auto-scroll-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: #94a3b8;
-    font-size: 0.8rem;
-    cursor: pointer;
-    user-select: none;
-}
-
-.auto-scroll-toggle:hover {
-    color: #e2e8f0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
 }
 
 .clear-btn {
-    background: transparent;
-    border: 1px solid #475569;
-    color: #94a3b8;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
+  border: 1px solid rgba(151, 178, 214, 0.16);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+  font-weight: 700;
 }
 
 .clear-btn:hover {
-    color: #ef4444;
-    border-color: #ef4444;
-    background-color: rgba(239, 68, 68, 0.1);
+  color: #ffd0d0;
+  border-color: rgba(255, 107, 107, 0.28);
+  background: rgba(255, 107, 107, 0.08);
 }
 
 .log-output {
-    flex: 1;
-    padding: 1rem;
-    overflow-y: auto;
-    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-    font-size: 13px;
-    line-height: 1.6; /* Increased from 1.5/1.6? Wait, I set 1.6 before. Let's go 1.7 for more breathing room. */
-    color: #e4e4e7;
-    white-space: pre-wrap;
-    position: relative;
-}
-
-.empty-logs {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: #52525b;
-    font-style: italic;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow-y: auto;
+  padding: 18px;
+  font-family: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 12.5px;
+  line-height: 1.72;
+  color: #dbeafe;
+  white-space: pre-wrap;
 }
 
 .log-line {
-    margin-bottom: 2px;
+  padding: 2px 10px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
 }
 
-/* Log Levels / Highlighting */
-.log-line:contains("ERROR"), .log-line:contains("error") {
-    color: #f87171;
+.empty-logs {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
-.log-line:contains("WARN"), .log-line:contains("warn") {
-    color: #fbbf24;
-}
-
-.log-line:contains("INFO"), .log-line:contains("info") {
-    color: #60a5fa;
-}
-
-.log-line:contains("SUCCESS"), .log-line:contains("success") {
-    color: #34d399;
-}
-
-/* Scrollbar for Logs */
 .log-output::-webkit-scrollbar {
-    width: 10px;
+  width: 10px;
 }
 
 .log-output::-webkit-scrollbar-track {
-    background: #18181b;
+  background: transparent;
 }
 
 .log-output::-webkit-scrollbar-thumb {
-    background: #3f3f46;
-    border-radius: 5px;
-    border: 2px solid #18181b;
+  border-radius: 999px;
+  background: rgba(151, 178, 214, 0.2);
+  border: 2px solid transparent;
 }
 
 .log-output::-webkit-scrollbar-thumb:hover {
-    background: #52525b;
+  background: rgba(151, 178, 214, 0.34);
+}
+
+@media (max-width: 720px) {
+  .log-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .log-actions {
+    justify-content: space-between;
+  }
+
+  .log-tabs {
+    width: 100%;
+  }
+
+  .log-tab {
+    flex: 1;
+    text-align: center;
+  }
 }
