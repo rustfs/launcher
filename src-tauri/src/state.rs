@@ -15,14 +15,34 @@ lazy_static! {
 
 lazy_static! {
     static ref ANSI_REGEX: Regex = Regex::new(r"\x1B\[[0-9;]*m").unwrap();
+    static ref SECRET_PATTERNS: Vec<Regex> = vec![
+        Regex::new(r#"(--access-key\s+)(\S+)"#).unwrap(),
+        Regex::new(r#"(--secret-key\s+)(\S+)"#).unwrap(),
+        Regex::new(r#"(access_key\s*=\s*)([^,\s]+)"#).unwrap(),
+        Regex::new(r#"(secret_key\s*=\s*)([^,\s]+)"#).unwrap(),
+        Regex::new(r#"(access_key:\s*Some\(")([^"]+)("\))"#).unwrap(),
+        Regex::new(r#"(secret_key:\s*Some\(")([^"]+)("\))"#).unwrap(),
+        Regex::new(r#"("access_key"\s*:\s*")([^"]+)(")"#).unwrap(),
+        Regex::new(r#"("secret_key"\s*:\s*")([^"]+)(")"#).unwrap(),
+    ];
 }
 
 fn clean_ansi_codes(s: &str) -> String {
     ANSI_REGEX.replace_all(s, "").to_string()
 }
 
+fn redact_secrets(s: &str) -> String {
+    SECRET_PATTERNS.iter().fold(s.to_string(), |acc, regex| {
+        regex.replace_all(&acc, "${1}[REDACTED]${3}").to_string()
+    })
+}
+
+fn clean_log_message(s: &str) -> String {
+    redact_secrets(&clean_ansi_codes(s))
+}
+
 fn buffer_log(logs: &Arc<Mutex<VecDeque<String>>>, message: String, capacity: usize) -> String {
-    let cleaned_message = clean_ansi_codes(&message);
+    let cleaned_message = clean_log_message(&message);
     let log_entry = format!(
         "[{}] {}",
         chrono::Local::now().format("%H:%M:%S"),
@@ -73,6 +93,26 @@ pub fn get_app_logs() -> Vec<String> {
 
 pub fn get_rustfs_logs() -> Vec<String> {
     RUSTFS_LOGS.lock().unwrap().iter().cloned().collect()
+}
+
+pub fn is_rustfs_process_running() -> bool {
+    let mut process_guard = RUSTFS_PROCESS.lock().unwrap();
+
+    match process_guard.as_mut() {
+        Some(child) => match child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(_)) => {
+                *process_guard = None;
+                false
+            }
+            Err(e) => {
+                add_app_log(format!("Failed to inspect RustFS process status: {}", e));
+                *process_guard = None;
+                false
+            }
+        },
+        None => false,
+    }
 }
 
 pub fn set_rustfs_process(process: Child) {

@@ -100,7 +100,8 @@ pub fn run() {
             commands::get_app_logs,
             commands::get_rustfs_logs,
             commands::diagnose_rustfs_binary,
-            commands::check_tcp_connection
+            commands::check_tcp_connection,
+            commands::is_rustfs_process_running
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

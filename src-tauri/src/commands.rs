@@ -90,3 +90,8 @@ pub async fn check_tcp_connection(host: String, port: u16) -> Result<bool> {
 
     Ok(result)
 }
+
+#[tauri::command]
+pub async fn is_rustfs_process_running() -> Result<bool> {
+    Ok(state::is_rustfs_process_running())
+}

@@ -170,6 +170,13 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
         return Err(Error::DataPathRequired);
     }
 
+    let api_port = config.port.unwrap_or(9000);
+    let console_port = config.console_port.unwrap_or(9001);
+
+    if config.console_enable && api_port == console_port {
+        return Err(Error::PortConflict);
+    }
+
     let binary_path = match &config.binary_path {
         Some(path) => PathBuf::from(path),
         None => get_binary_path()?,
@@ -199,9 +206,15 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
     let address = format!(
         "{}:{}",
         config.host.as_deref().unwrap_or("127.0.0.1"),
-        config.port.unwrap_or(9000)
+        api_port
     );
     cmd.arg("--address").arg(&address);
+
+    let console_address = format!(
+        "{}:{}",
+        config.host.as_deref().unwrap_or("127.0.0.1"),
+        console_port
+    );
 
     if let Some(access_key) = &config.access_key {
         cmd.arg("--access-key").arg(access_key);
@@ -211,6 +224,7 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
     }
     if config.console_enable {
         cmd.arg("--console-enable");
+        cmd.arg("--console-address").arg(&console_address);
     }
 
     #[cfg(windows)]
@@ -220,7 +234,15 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    add_app_log(format!("Spawning command: {:?}", cmd));
+    add_app_log(format!(
+        "Spawning RustFS: binary={}, address={}, console_enable={}, console_address={}, access_key_set={}, secret_key_set={}",
+        binary_path.display(),
+        address,
+        config.console_enable,
+        console_address,
+        config.access_key.is_some(),
+        config.secret_key.is_some()
+    ));
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

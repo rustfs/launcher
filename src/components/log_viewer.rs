@@ -1,13 +1,13 @@
-use crate::types::LogType;
+use crate::types::{LogEntry, LogType};
 use leptos::prelude::*;
 use std::collections::VecDeque;
 
 #[component]
 pub fn LogViewer(
-    #[prop(into)] app_logs: Signal<VecDeque<String>>,
-    #[prop(into)] set_app_logs: WriteSignal<VecDeque<String>>,
-    #[prop(into)] rustfs_logs: Signal<VecDeque<String>>,
-    #[prop(into)] set_rustfs_logs: WriteSignal<VecDeque<String>>,
+    #[prop(into)] app_logs: Signal<VecDeque<LogEntry>>,
+    #[prop(into)] set_app_logs: WriteSignal<VecDeque<LogEntry>>,
+    #[prop(into)] rustfs_logs: Signal<VecDeque<LogEntry>>,
+    #[prop(into)] set_rustfs_logs: WriteSignal<VecDeque<LogEntry>>,
     #[prop(into)] current_log_type: Signal<LogType>,
     #[prop(into)] set_current_log_type: WriteSignal<LogType>,
 ) -> impl IntoView {
@@ -77,10 +77,10 @@ pub fn LogViewer(
                         .into_iter()
                         .collect::<Vec<_>>()
                     }
-                    key=|log| log.clone()
+                    key=|log| log.id
                     let:log
                 >
-                    <div class="log-line">{log}</div>
+                    <div class="log-line">{log.message}</div>
                 </For>
                 <Show when=move || {
                     match current_log_type.get() {
