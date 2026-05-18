@@ -199,10 +199,13 @@ jobs:
 
           # Create and rename app.zip
           if [ -n "$APP_DIR" ]; then
+            codesign --force --deep --sign - "$APP_DIR"
+            codesign --verify --deep --strict --verbose=4 "$APP_DIR"
+
             APP_PARENT="$(dirname "$APP_DIR")"
             APP_NAME="$(basename "$APP_DIR")"
             cd "$APP_PARENT"
-            zip -r "$GITHUB_WORKSPACE/artifacts/${ARTIFACT_PREFIX}.app.zip" "$APP_NAME"
+            ditto -c -k --keepParent "$APP_NAME" "$GITHUB_WORKSPACE/artifacts/${ARTIFACT_PREFIX}.app.zip"
             echo "✅ Created: ${ARTIFACT_PREFIX}.app.zip"
           else
             echo "❌ 未找到 .app 产物"
