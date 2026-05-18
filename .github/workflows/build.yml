@@ -163,7 +163,12 @@ jobs:
           Copy-Item "rustfs-temp\rustfs.exe" -Destination "src-tauri\binaries\rustfs-windows-x86_64.exe"
           Remove-Item -Recurse -Force rustfs-temp, rustfs-windows-x86_64.zip
 
-      - name: Build Tauri application
+      - name: Build Tauri application (macOS)
+        if: runner.os == 'macOS'
+        run: cargo tauri build --target ${{ matrix.rust_target }} --bundles app
+
+      - name: Build Tauri application (Windows)
+        if: runner.os == 'Windows'
         run: cargo tauri build --target ${{ matrix.rust_target }}
 
       - name: Prepare and rename artifacts (macOS)

@@ -29,7 +29,7 @@
 - **Windows** (x86_64)
 
 **产物类型:**
-- macOS: `.dmg` 安装包和 `.app.zip` 压缩包
+- macOS: `.app.zip` 压缩包
 - Windows: `.msi` 安装包和 `.exe` 安装程序
 
 **产物命名格式:**
@@ -106,16 +106,12 @@
 
 ```
 rustfs-launcher-macos-aarch64/
-  ├── rustfs-launcher-macos-aarch64-v0.1.0.dmg
   ├── rustfs-launcher-macos-aarch64-v0.1.0.app.zip
-  ├── rustfs-launcher-macos-aarch64-latest.dmg
-  └── rustfs-launcher-macos-aarch64-latest.app.zip
+  └── rustfs-launcher-macos-aarch64-latest.zip
 
 rustfs-launcher-macos-x86_64/
-  ├── rustfs-launcher-macos-x86_64-v0.1.0.dmg
   ├── rustfs-launcher-macos-x86_64-v0.1.0.app.zip
-  ├── rustfs-launcher-macos-x86_64-latest.dmg
-  └── rustfs-launcher-macos-x86_64-latest.app.zip
+  └── rustfs-launcher-macos-x86_64-latest.zip
 
 rustfs-launcher-windows-x86_64/
   ├── rustfs-launcher-windows-x86_64-v0.1.0.msi
