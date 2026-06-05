@@ -23,6 +23,7 @@ jobs:
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
       version: ${{ steps.check.outputs.version }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
       is_release: ${{ steps.check.outputs.is_release }}
     steps:
       - name: Checkout repository
@@ -35,37 +36,42 @@ jobs:
         run: |
           should_build=true
           version=""
+          release_tag=""
           is_release=false
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # Release event - get version from release tag
-            version="${{ github.event.release.tag_name }}"
+            release_tag="${{ github.event.release.tag_name }}"
             is_release=true
-            echo "📦 Release build detected: $version"
+            echo "📦 Release build detected: $release_tag"
           elif [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
             # Tag push - get version from tag
-            version="${GITHUB_REF#refs/tags/}"
+            release_tag="${GITHUB_REF#refs/tags/}"
             is_release=true
-            echo "🏷️ Tag build detected: $version"
+            echo "🏷️ Tag build detected: $release_tag"
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ -n "${{ github.event.inputs.tag }}" ]]; then
             # Manual trigger with tag input - treat as release
-            version="${{ github.event.inputs.tag }}"
+            release_tag="${{ github.event.inputs.tag }}"
             is_release=true
-            echo "🏷️ Manual release build detected: $version"
+            echo "🏷️ Manual release build detected: $release_tag"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            # Manual trigger against a tag ref
+            release_tag="${GITHUB_REF#refs/tags/}"
+            is_release=true
+            echo "🏷️ Manual tag-ref build detected: $release_tag"
           else
             # Manual trigger without tag or other
             version="dev-$(git rev-parse --short HEAD)"
             echo "🛠️ Development build detected: $version"
           fi
 
-          # Ensure version starts with 'v' for release builds
-          if [[ "$is_release" == "true" ]] && [[ ! "$version" =~ ^v ]]; then
-            version="v${version}"
-            echo "ℹ️  Version normalized to: $version"
+          if [[ "$is_release" == "true" ]]; then
+            version="$release_tag"
           fi
 
           echo "should_build=$should_build" >> $GITHUB_OUTPUT
           echo "version=$version" >> $GITHUB_OUTPUT
+          echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
           echo "is_release=$is_release" >> $GITHUB_OUTPUT
 
           echo "📊 Build Summary:"
@@ -88,7 +94,7 @@ jobs:
             os_name: "macos"
             arch: "aarch64"
 
-          - platform: "macos-13"
+          - platform: "macos-15-intel"
             rust_target: "x86_64-apple-darwin"
             os_name: "macos"
             arch: "x86_64"
@@ -133,21 +139,55 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Resolve upstream RustFS release
+        id: upstream
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-check.outputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            tag="$RELEASE_TAG"
+            echo "🎯 Using requested upstream release: $tag"
+            gh release view "$tag" --repo rustfs/rustfs >/dev/null
+          else
+            tag=$(gh api repos/rustfs/rustfs/releases?per_page=1 --jq '.[0].tag_name')
+            if [[ -z "$tag" || "$tag" == "null" ]]; then
+              echo "❌ Failed to resolve latest upstream release"
+              exit 1
+            fi
+            echo "🎯 Using latest upstream release: $tag"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Download RustFS binary (macOS aarch64)
         if: matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p src-tauri/binaries
-          curl -L -o rustfs-macos-aarch64.zip https://dl.rustfs.com/artifacts/rustfs/release/rustfs-macos-aarch64-latest.zip
+          gh release download "${{ steps.upstream.outputs.tag }}" \
+            --repo rustfs/rustfs \
+            --pattern "rustfs-macos-aarch64-latest.zip" \
+            --dir . \
+            --clobber
           unzip -q rustfs-macos-aarch64.zip -d rustfs-temp
           cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-aarch64
           chmod +x src-tauri/binaries/rustfs-macos-aarch64
           rm -rf rustfs-temp rustfs-macos-aarch64.zip
 
       - name: Download RustFS binary (macOS x86_64)
-        if: matrix.platform == 'macos-13'
+        if: matrix.platform == 'macos-15-intel'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p src-tauri/binaries
-          curl -L -o rustfs-macos-x86_64.zip https://dl.rustfs.com/artifacts/rustfs/release/rustfs-macos-x86_64-latest.zip
+          gh release download "${{ steps.upstream.outputs.tag }}" \
+            --repo rustfs/rustfs \
+            --pattern "rustfs-macos-x86_64-latest.zip" \
+            --dir . \
+            --clobber
           unzip -q rustfs-macos-x86_64.zip -d rustfs-temp
           cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-x86_64
           chmod +x src-tauri/binaries/rustfs-macos-x86_64
@@ -156,9 +196,11 @@ jobs:
       - name: Download RustFS binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri\binaries
-          Invoke-WebRequest -Uri "https://dl.rustfs.com/artifacts/rustfs/release/rustfs-windows-x86_64-latest.zip" -OutFile "rustfs-windows-x86_64.zip"
+          gh release download "${{ steps.upstream.outputs.tag }}" --repo rustfs/rustfs --pattern "rustfs-windows-x86_64-latest.zip" --dir . --clobber
           Expand-Archive -Path "rustfs-windows-x86_64.zip" -DestinationPath "rustfs-temp" -Force
           Copy-Item "rustfs-temp\rustfs.exe" -Destination "src-tauri\binaries\rustfs-windows-x86_64.exe"
           Remove-Item -Recurse -Force rustfs-temp, rustfs-windows-x86_64.zip
@@ -429,22 +471,13 @@ jobs:
           echo "📦 Release assets:"
           ls -la
 
-      - name: Upload to GitHub Release (release event)
-        if: github.event_name == 'release'
+      - name: Upload to GitHub Release
+        if: needs.build-check.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: release-assets/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload to GitHub Release (tag push)
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.build-check.outputs.version }}
+          tag_name: ${{ needs.build-check.outputs.release_tag }}
           files: release-assets/*
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(needs.build-check.outputs.release_tag, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

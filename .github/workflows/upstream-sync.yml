@@ -120,10 +120,9 @@ jobs:
           
           echo "🚀 触发构建版本: $UPSTREAM_VERSION"
           
-          # 触发 build.yml workflow
+          # 直接对新建 tag 触发 build.yml，确保构建上下文与 release tag 一致
           gh workflow run build.yml \
-            --ref main \
-            -f tag="$UPSTREAM_VERSION"
+            --ref "$UPSTREAM_VERSION"
           
           echo "✅ 构建工作流已触发"
       
