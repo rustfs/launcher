@@ -166,32 +166,34 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ASSET_NAME="rustfs-macos-aarch64-latest.zip"
           mkdir -p src-tauri/binaries
           gh release download "${{ steps.upstream.outputs.tag }}" \
             --repo rustfs/rustfs \
-            --pattern "rustfs-macos-aarch64-latest.zip" \
+            --pattern "$ASSET_NAME" \
             --dir . \
             --clobber
-          unzip -q rustfs-macos-aarch64.zip -d rustfs-temp
+          unzip -q "$ASSET_NAME" -d rustfs-temp
           cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-aarch64
           chmod +x src-tauri/binaries/rustfs-macos-aarch64
-          rm -rf rustfs-temp rustfs-macos-aarch64.zip
+          rm -rf rustfs-temp "$ASSET_NAME"
 
       - name: Download RustFS binary (macOS x86_64)
         if: matrix.platform == 'macos-15-intel'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ASSET_NAME="rustfs-macos-x86_64-latest.zip"
           mkdir -p src-tauri/binaries
           gh release download "${{ steps.upstream.outputs.tag }}" \
             --repo rustfs/rustfs \
-            --pattern "rustfs-macos-x86_64-latest.zip" \
+            --pattern "$ASSET_NAME" \
             --dir . \
             --clobber
-          unzip -q rustfs-macos-x86_64.zip -d rustfs-temp
+          unzip -q "$ASSET_NAME" -d rustfs-temp
           cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-x86_64
           chmod +x src-tauri/binaries/rustfs-macos-x86_64
-          rm -rf rustfs-temp rustfs-macos-x86_64.zip
+          rm -rf rustfs-temp "$ASSET_NAME"
 
       - name: Download RustFS binary (Windows)
         if: runner.os == 'Windows'
@@ -199,11 +201,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $AssetName = "rustfs-windows-x86_64-latest.zip"
           New-Item -ItemType Directory -Force -Path src-tauri\binaries
-          gh release download "${{ steps.upstream.outputs.tag }}" --repo rustfs/rustfs --pattern "rustfs-windows-x86_64-latest.zip" --dir . --clobber
-          Expand-Archive -Path "rustfs-windows-x86_64.zip" -DestinationPath "rustfs-temp" -Force
+          gh release download "${{ steps.upstream.outputs.tag }}" --repo rustfs/rustfs --pattern $AssetName --dir . --clobber
+          Expand-Archive -Path $AssetName -DestinationPath "rustfs-temp" -Force
           Copy-Item "rustfs-temp\rustfs.exe" -Destination "src-tauri\binaries\rustfs-windows-x86_64.exe"
-          Remove-Item -Recurse -Force rustfs-temp, rustfs-windows-x86_64.zip
+          Remove-Item -Recurse -Force rustfs-temp, $AssetName
 
       - name: Build Tauri application (macOS)
         if: runner.os == 'macOS'
