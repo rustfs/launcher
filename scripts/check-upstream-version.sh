@@ -14,15 +14,26 @@ echo ""
 
 # 获取上游最新版本（包括 pre-release）
 echo "📡 获取上游最新版本..."
-GITHUB_API_RELEASES="https://api.github.com/repos/${UPSTREAM_REPO}/releases"
-UPSTREAM_VERSION=$(curl -s "$GITHUB_API_RELEASES" | jq -r '.[0].tag_name')
+RAW_RESPONSE="$(gh api "repos/${UPSTREAM_REPO}/releases?per_page=1")"
+JSON_TYPE="$(printf '%s' "$RAW_RESPONSE" | jq -r 'type')"
+
+if [ "$JSON_TYPE" != "array" ]; then
+    echo "❌ GitHub API 返回了非数组响应"
+    echo "$RAW_RESPONSE"
+    exit 1
+fi
+
+UPSTREAM_VERSION="$(printf '%s' "$RAW_RESPONSE" | jq -r '.[0].tag_name // empty')"
 
 if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "null" ]; then
     echo "❌ 无法获取上游版本"
+    echo "原始响应："
+    echo "$RAW_RESPONSE"
     echo "请检查："
     echo "  1. 网络连接"
-    echo "  2. GitHub API 访问限制"
-    echo "  3. 上游仓库是否有 releases"
+    echo "  2. GitHub CLI 是否已登录"
+    echo "  3. GitHub API 访问限制"
+    echo "  4. 上游仓库是否有 releases"
     exit 1
 fi
 
