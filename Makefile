@@ -64,7 +64,7 @@ check-fmt:
 	@echo "=========================================="
 	@echo "📝 Checking Rust code formatting..."
 	@echo "=========================================="
-	@cd src-tauri && cargo fmt --all --check
+	@cargo fmt --all --check
 	@echo "✅ Formatting check passed!"
 	@echo ""
 
@@ -73,7 +73,8 @@ check-clippy:
 	@echo "=========================================="
 	@echo "🔍 Running Clippy linter..."
 	@echo "=========================================="
-	@cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings
+	@cargo check -p rustfs-launcher-ui --target wasm32-unknown-unknown
+	@cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
 	@echo "✅ Clippy check passed!"
 	@echo ""
 
@@ -91,14 +92,14 @@ check-test:
 	@echo "=========================================="
 	@echo "🧪 Running tests..."
 	@echo "=========================================="
-	@cd src-tauri && cargo test --all-features
+	@cargo test -p rustfs-launcher --all-features
 	@echo "✅ All tests passed!"
 	@echo ""
 
 # Auto-fix Rust code formatting
 fix-fmt:
 	@echo "🔧 Auto-fixing Rust code formatting..."
-	@cd src-tauri && cargo fmt --all
+	@cargo fmt --all
 	@echo "✅ Code formatted!"
 
 # ============================================================================

@@ -7,8 +7,10 @@
   overflow: hidden;
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(circle at top right, rgba(255, 138, 61, 0.09), transparent 22%),
-    linear-gradient(180deg, rgba(5, 10, 19, 0.94), rgba(3, 7, 14, 0.98));
+    linear-gradient(90deg, rgba(37, 99, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(37, 99, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+  background-size: 24px 24px, 24px 24px, auto;
 }
 
 .log-panel {
@@ -25,8 +27,8 @@
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(151, 178, 214, 0.12);
-  background: rgba(12, 20, 34, 0.78);
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(14px);
 }
 
@@ -35,7 +37,7 @@
   gap: 8px;
   padding: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: #edf3ff;
 }
 
 .log-tab {
@@ -55,8 +57,8 @@
 }
 
 .log-tab.active {
-  color: #0d1725;
-  background: linear-gradient(135deg, var(--accent-color), #ffbc79);
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-strong));
 }
 
 .log-actions {
@@ -74,10 +76,10 @@
 }
 
 .clear-btn {
-  border: 1px solid rgba(151, 178, 214, 0.16);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   color: var(--text-secondary);
   font-size: 0.77rem;
   font-weight: 700;
@@ -98,7 +100,7 @@
   font-family: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", monospace;
   font-size: 12.5px;
   line-height: 1.72;
-  color: #dbeafe;
+  color: #1f2937;
   white-space: pre-wrap;
 }
 
@@ -106,7 +108,7 @@
   padding: 2px 10px;
   margin-bottom: 4px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(37, 99, 255, 0.035);
 }
 
 .empty-logs {
@@ -128,12 +130,12 @@
 
 .log-output::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(151, 178, 214, 0.2);
+  background: rgba(37, 99, 255, 0.18);
   border: 2px solid transparent;
 }
 
 .log-output::-webkit-scrollbar-thumb:hover {
-  background: rgba(151, 178, 214, 0.34);
+  background: rgba(37, 99, 255, 0.3);
 }
 
 @media (max-width: 720px) {
