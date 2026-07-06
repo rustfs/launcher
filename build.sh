@@ -19,21 +19,32 @@ ARCH=$(uname -m)
 echo "Detected platform: $OS $ARCH"
 echo "Downloading RustFS binary for current platform..."
 
+echo "Resolving latest RustFS version..."
+LATEST_JSON=$(curl -fsSL "https://version.rustfs.com/latest.json")
+RUSTFS_RELEASE_TAG=$(printf '%s' "$LATEST_JSON" | jq -r '.tag // .version // empty')
+
+if [ -z "$RUSTFS_RELEASE_TAG" ] || [ "$RUSTFS_RELEASE_TAG" = "null" ]; then
+    echo "✗ Error: Failed to resolve RustFS version from latest.json"
+    exit 1
+fi
+
+RUSTFS_ASSET_VERSION="$RUSTFS_RELEASE_TAG"
+case "$RUSTFS_ASSET_VERSION" in
+    v*) ;;
+    *) RUSTFS_ASSET_VERSION="v$RUSTFS_ASSET_VERSION" ;;
+esac
+
+echo "Latest RustFS version: $RUSTFS_RELEASE_TAG"
+
 # Function to download and extract binary
 download_binary() {
     local url=$1
     local filename=$2
     local target_name=$3
     
-    # Check if binary already exists
-    if [ -f "$BINARIES_DIR/$target_name" ]; then
-        echo "✓ $target_name already exists, skipping download"
-        return 0
-    fi
-    
     echo "Downloading $filename..."
     
-    if curl -L -o "$TEMP_DIR/$filename.zip" "$url"; then
+    if curl -fL --retry 3 --retry-delay 5 -H "Cache-Control: no-cache" -o "$TEMP_DIR/$filename.zip" "$url"; then
         echo "Extracting $filename..."
         unzip -o -q "$TEMP_DIR/$filename.zip" -d "$TEMP_DIR/$filename"
         
@@ -64,11 +75,11 @@ case "$OS" in
         case "$ARCH" in
             "arm64")
                 echo "Downloading for macOS Apple Silicon (aarch64)..."
-                download_binary "https://dl.rustfs.com/artifacts/rustfs/release/rustfs-macos-aarch64-latest.zip" "rustfs-macos-aarch64" "rustfs-macos-aarch64"
+                download_binary "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_RELEASE_TAG}/rustfs-macos-aarch64-${RUSTFS_ASSET_VERSION}.zip" "rustfs-macos-aarch64" "rustfs-macos-aarch64"
                 ;;
             "x86_64")
                 echo "Downloading for macOS Intel (x86_64)..."
-                download_binary "https://dl.rustfs.com/artifacts/rustfs/release/rustfs-macos-x86_64-latest.zip" "rustfs-macos-x86_64" "rustfs-macos-x86_64"
+                download_binary "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_RELEASE_TAG}/rustfs-macos-x86_64-${RUSTFS_ASSET_VERSION}.zip" "rustfs-macos-x86_64" "rustfs-macos-x86_64"
                 ;;
             *)
                 echo "✗ Error: Unsupported macOS architecture: $ARCH"

@@ -151,12 +151,13 @@ jobs:
             echo "🎯 Using requested upstream release: $tag"
             gh release view "$tag" --repo rustfs/rustfs >/dev/null
           else
-            tag=$(gh api repos/rustfs/rustfs/releases?per_page=1 --jq '.[0].tag_name')
+            tag=$(curl -fsSL https://version.rustfs.com/latest.json | jq -r '.tag // .version // empty')
             if [[ -z "$tag" || "$tag" == "null" ]]; then
-              echo "❌ Failed to resolve latest upstream release"
+              echo "❌ Failed to resolve latest upstream release from latest.json"
               exit 1
             fi
             echo "🎯 Using latest upstream release: $tag"
+            gh release view "$tag" --repo rustfs/rustfs >/dev/null
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"

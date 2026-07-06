@@ -2,9 +2,9 @@ name: Upstream Sync
 
 # 当上游 rustfs/rustfs 发布新版本时，自动触发构建
 on:
-  # 定时检查上游版本（每天UTC时间6点，北京时间14点）
+  # 定时检查上游版本（每小时一次）
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 * * * *'
   
   # 支持手动触发
   workflow_dispatch:
@@ -34,25 +34,15 @@ jobs:
       
       - name: 获取上游最新版本
         id: upstream
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -o pipefail
           
-          # 从 rustfs/rustfs GitHub Releases 获取最新版本（包括 pre-release）
-          RAW_RESPONSE="$(gh api 'repos/rustfs/rustfs/releases?per_page=1')"
-          JSON_TYPE="$(printf '%s' "$RAW_RESPONSE" | jq -r 'type')"
-          
-          if [ "$JSON_TYPE" != "array" ]; then
-            echo "❌ GitHub API 返回了非数组响应，无法解析最新 release"
-            echo "$RAW_RESPONSE"
-            exit 1
-          fi
-          
-          UPSTREAM_VERSION="$(printf '%s' "$RAW_RESPONSE" | jq -r '.[0].tag_name // empty')"
+          # version.rustfs.com/latest.json 是 RustFS 官方最新版本入口
+          RAW_RESPONSE="$(curl -fsSL 'https://version.rustfs.com/latest.json')"
+          UPSTREAM_VERSION="$(printf '%s' "$RAW_RESPONSE" | jq -r '.tag // .version // empty')"
           
           if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "null" ]; then
-            echo "❌ 无法从 GitHub API 响应中提取上游版本"
+            echo "❌ 无法从 latest.json 响应中提取上游版本"
             echo "$RAW_RESPONSE"
             exit 1
           fi
@@ -74,6 +64,8 @@ jobs:
           UPSTREAM="${{ steps.upstream.outputs.version }}"
           CURRENT="${{ steps.current.outputs.version }}"
           FORCE="${{ github.event.inputs.force_build }}"
+          UPSTREAM_NORMALIZED="${UPSTREAM#v}"
+          CURRENT_NORMALIZED="${CURRENT#v}"
           
           echo "上游版本: $UPSTREAM"
           echo "当前版本: $CURRENT"
@@ -82,7 +74,7 @@ jobs:
             echo "🔨 强制构建模式"
             echo "has_new_version=true" >> $GITHUB_OUTPUT
             echo "should_build=true" >> $GITHUB_OUTPUT
-          elif [ "$UPSTREAM" != "$CURRENT" ]; then
+          elif [ "$UPSTREAM_NORMALIZED" != "$CURRENT_NORMALIZED" ]; then
             echo "🆕 发现新版本: $UPSTREAM (当前: $CURRENT)"
             echo "has_new_version=true" >> $GITHUB_OUTPUT
             echo "should_build=true" >> $GITHUB_OUTPUT

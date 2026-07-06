@@ -74,7 +74,7 @@ make check-upstream # Check for new upstream rustfs/rustfs versions
 
 The project automatically syncs with upstream [rustfs/rustfs](https://github.com/rustfs/rustfs) releases:
 
-- **Daily Check**: A scheduled GitHub Actions workflow runs daily at UTC 6:00 (Beijing 14:00) to check for new versions
+- **Hourly Check**: A scheduled GitHub Actions workflow runs hourly to check `https://version.rustfs.com/latest.json` for new versions
 - **Automatic Build**: When a new version is detected, the workflow automatically creates a git tag and triggers the build process
 - **Manual Check**: Run `make check-upstream` locally to check for new versions
 - **Manual Trigger**: Can be manually triggered via GitHub Actions if needed

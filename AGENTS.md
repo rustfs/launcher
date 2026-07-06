@@ -21,7 +21,7 @@ Use this guide when contributing to RustFS Launcher; it highlights the project l
 The repository includes automated workflows to keep in sync with upstream rustfs/rustfs releases:
 
 ### Upstream Version Sync (`.github/workflows/upstream-sync.yml`)
-- **Scheduled Check**: Runs daily at UTC 6:00 (Beijing 14:00) to check for new rustfs/rustfs releases.
+- **Scheduled Check**: Runs hourly to check `https://version.rustfs.com/latest.json` for new rustfs/rustfs releases.
 - **Automatic Trigger**: When a new upstream version is detected, it automatically creates a corresponding git tag and triggers the build workflow.
 - **Manual Trigger**: Can be manually triggered via GitHub Actions with an optional `force_build` parameter.
 - **Version Tracking**: Compares upstream release tags with local repository tags to detect updates.
@@ -29,7 +29,7 @@ The repository includes automated workflows to keep in sync with upstream rustfs
 ### Build Workflow (`.github/workflows/build.yml`)
 - Triggered automatically by new tags created by the upstream sync workflow.
 - Builds platform-specific installers for Windows (macOS support can be uncommented).
-- Downloads the latest RustFS binaries from `dl.rustfs.com` during the build process.
+- Downloads the latest RustFS binaries from GitHub release assets resolved through `latest.json` during the build process.
 - Produces distributable packages (DMG, MSI, AppImage, etc.) as GitHub release artifacts.
 
 This automation ensures that whenever rustfs/rustfs publishes a new version, this launcher repository will automatically build and release updated installers within 24 hours.
