@@ -372,64 +372,68 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
-      - name: Upload to Aliyun OSS
+      - name: Upload to Cloudflare R2
         if: needs.build-check.outputs.is_release == 'true'
         env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.ALICLOUDOSS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.ALICLOUDOSS_KEY_SECRET }}
-          OSS_REGION: cn-beijing
-          OSS_ENDPOINT: https://oss-cn-beijing.aliyuncs.com
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         shell: bash
         run: |
-          if [[ -z "$OSS_ACCESS_KEY_ID" ]]; then
-            echo "⚠️ OSS credentials not available, skipping OSS upload"
+          if [[ -z "$R2_ACCESS_KEY_ID" || -z "$R2_SECRET_ACCESS_KEY" || -z "$R2_ENDPOINT" || -z "$R2_BUCKET" ]]; then
+            echo "⚠️ R2 credentials or endpoint missing, skipping artifact upload"
             exit 0
           fi
 
-          # Install ossutil
-          OSSUTIL_VERSION="2.1.1"
-          case "${{ matrix.os_name }}" in
-            macos)
-              if [[ "$(uname -m)" == "arm64" ]]; then
-                ARCH="arm64"
-              else
-                ARCH="amd64"
-              fi
-              OSSUTIL_ZIP="ossutil-${OSSUTIL_VERSION}-mac-${ARCH}.zip"
-              OSSUTIL_DIR="ossutil-${OSSUTIL_VERSION}-mac-${ARCH}"
+          if ! command -v aws >/dev/null 2>&1; then
+            echo "ℹ️ aws CLI not found, installing AWS CLI v2..."
+            case "$(uname -s)" in
+              Linux)
+                case "$(uname -m)" in
+                  x86_64) AWS_CLI_ARCH="x86_64" ;;
+                  aarch64|arm64) AWS_CLI_ARCH="aarch64" ;;
+                  *) echo "❌ Unsupported architecture for aws CLI install: $(uname -m)"; exit 1 ;;
+                esac
+                curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_CLI_ARCH}.zip" -o awscliv2.zip
+                unzip -q awscliv2.zip
+                ./aws/install --update -i "${RUNNER_TEMP:-/tmp}/aws-cli" -b "${RUNNER_TEMP:-/tmp}/aws-bin"
+                export PATH="${RUNNER_TEMP:-/tmp}/aws-bin:$PATH"
+                rm -rf awscliv2.zip aws
+                ;;
+              Darwin)
+                curl -sL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o AWSCLIV2.pkg
+                sudo installer -pkg AWSCLIV2.pkg -target /
+                rm -f AWSCLIV2.pkg
+                ;;
+              MINGW*|MSYS*|CYGWIN*)
+                echo "❌ aws CLI is required on Windows runners but was not found"
+                exit 1
+                ;;
+              *) echo "❌ Unsupported OS for aws CLI install: $(uname -s)"; exit 1 ;;
+            esac
+          fi
 
-              curl -o "$OSSUTIL_ZIP" "https://gosspublic.alicdn.com/ossutil/v2/${OSSUTIL_VERSION}/${OSSUTIL_ZIP}"
-              unzip "$OSSUTIL_ZIP"
-              mv "${OSSUTIL_DIR}/ossutil" /usr/local/bin/
-              rm -rf "$OSSUTIL_DIR" "$OSSUTIL_ZIP"
-              chmod +x /usr/local/bin/ossutil
-              OSSUTIL_BIN=ossutil
-              ;;
-            windows)
-              OSSUTIL_ZIP="ossutil-${OSSUTIL_VERSION}-windows-amd64.zip"
-              OSSUTIL_DIR="ossutil-${OSSUTIL_VERSION}-windows-amd64"
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION="auto"
+          # AWS CLI v2.23+ enables data integrity checksums by default, which
+          # Cloudflare R2 does not fully support; only send them when required.
+          export AWS_REQUEST_CHECKSUM_CALCULATION="when_required"
+          export AWS_RESPONSE_CHECKSUM_VALIDATION="when_required"
 
-              curl -o "$OSSUTIL_ZIP" "https://gosspublic.alicdn.com/ossutil/v2/${OSSUTIL_VERSION}/${OSSUTIL_ZIP}"
-              unzip "$OSSUTIL_ZIP"
-              mv "${OSSUTIL_DIR}/ossutil.exe" ./ossutil.exe
-              rm -rf "$OSSUTIL_DIR" "$OSSUTIL_ZIP"
-              OSSUTIL_BIN=./ossutil.exe
-              ;;
-          esac
+          R2_PATH="s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/"
 
-          OSS_PATH="oss://rustfs-artifacts/artifacts/rustfs-launcher/release/"
-
-          # Upload all artifacts to OSS
-          echo "📤 Uploading artifacts to $OSS_PATH..."
+          echo "📤 Uploading artifacts to $R2_PATH..."
           for file in artifacts/*; do
             if [[ -f "$file" ]]; then
-              echo "Uploading: $file to $OSS_PATH..."
-              $OSSUTIL_BIN cp "$file" "$OSS_PATH" --force
-              echo "✅ Uploaded: $file"
+              echo "Uploading: $file"
+              aws s3 cp "$file" "$R2_PATH" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+              echo "✅ Uploaded: $(basename "$file")"
             fi
           done
 
-          echo "✅ OSS upload completed successfully"
+          echo "✅ R2 upload completed successfully"
 
   # Upload release assets
   upload-release-assets:

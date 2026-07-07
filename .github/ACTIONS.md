@@ -38,7 +38,7 @@
 
 **产物上传位置:**
 - GitHub Release Assets
-- 阿里云 OSS: `oss://rustfs-artifacts/artifacts/rustfs-launcher/release/`
+- Cloudflare R2: `s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/`
 
 ## 使用方法
 
@@ -89,9 +89,10 @@
 
 5. **发布完成**
 
-   编译成功后会自动:
-   - 将构建产物上传到 Release Assets
-   - 将构建产物上传到阿里云 OSS (`oss://rustfs-artifacts/artifacts/rustfs-launcher/release/`)
+    编译成功后会自动:
+
+    - 将构建产物上传到 Release Assets
+    - 将构建产物上传到 Cloudflare R2 (`s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/`)
 
 ### 手动触发编译
 
@@ -156,12 +157,18 @@ strategy:
 - `WINDOWS_CERTIFICATE`
 - `WINDOWS_CERTIFICATE_PASSWORD`
 
-然后在 workflow 中添加签名步骤。
+**Cloudflare R2:**
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_ENDPOINT`
+- `R2_BUCKET`
+
+然后在 workflow 中启用对应的签名或上传步骤。
 
 ## 依赖项说明
 
 ### 自动下载的依赖:
-- RustFS 二进制文件 (从 https://dl.rustfs.com 下载)
+- RustFS 二进制文件 (通过 `https://version.rustfs.com/latest.json` 解析版本，并从 GitHub Release Assets 下载)
 
 ### GitHub Actions 使用的组件:
 - `dtolnay/rust-toolchain` - Rust 工具链
