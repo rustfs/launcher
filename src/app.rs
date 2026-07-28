@@ -1,7 +1,7 @@
 use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
-use crate::types::{CommandResponse, LogEntry, LogType, RustFsConfig};
+use crate::types::{AppVersionInfo, CommandResponse, LogEntry, LogType, RustFsConfig, UpdateInfo};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use std::collections::VecDeque;
@@ -175,6 +175,11 @@ pub fn App() -> impl IntoView {
     let (current_log_type, set_current_log_type) = signal(LogType::App);
     let (service_status, set_service_status) = signal(false);
     let (can_stop, set_can_stop) = signal(false);
+    let (version_info, set_version_info) = signal(None::<AppVersionInfo>);
+    let (update_info, set_update_info) = signal(None::<UpdateInfo>);
+    let (is_checking_update, set_is_checking_update) = signal(false);
+    let (is_installing_update, set_is_installing_update) = signal(false);
+    let (update_progress, set_update_progress) = signal(None::<u32>);
 
     let remove_toast = Callback::new(move |id: u64| {
         set_toasts.update(|current| {
@@ -239,6 +244,12 @@ pub fn App() -> impl IntoView {
             return;
         }
 
+        let version_value =
+            tauri_invoke("get_app_version_info", js_sys::Object::new().into()).await;
+        if let Ok(info) = serde_wasm_bindgen::from_value::<AppVersionInfo>(version_value) {
+            set_version_info.set(Some(info));
+        }
+
         push_log(
             app_log_writer,
             "[DEBUG] Setting up real-time log listeners...".to_string(),
@@ -289,6 +300,35 @@ pub fn App() -> impl IntoView {
         if let Some(window) = web_sys::window() {
             let app_listener = create_log_listener(app_log_writer, APP_LOG_CAPACITY);
             let rustfs_listener = create_log_listener(rustfs_log_writer, RUSTFS_LOG_CAPACITY);
+            let update_listener = Closure::wrap(Box::new(move |event: JsValue| {
+                let Ok(payload) = js_sys::Reflect::get(&event, &"payload".into()) else {
+                    return;
+                };
+                let event_name = js_sys::Reflect::get(&payload, &"event".into())
+                    .ok()
+                    .and_then(|value| value.as_string());
+
+                match event_name.as_deref() {
+                    Some("started") => set_update_progress.set(Some(0)),
+                    Some("progress") => {
+                        let downloaded = js_sys::Reflect::get(&payload, &"downloaded".into())
+                            .ok()
+                            .and_then(|value| value.as_f64());
+                        if let Some(downloaded) = downloaded {
+                            let percent = js_sys::Reflect::get(&payload, &"content_length".into())
+                                .ok()
+                                .and_then(|value| value.as_f64())
+                                .filter(|total| *total > 0.0)
+                                .map(|total| ((downloaded / total) * 100.0).min(100.0) as u32);
+                            if percent.is_some() {
+                                set_update_progress.set(percent);
+                            }
+                        }
+                    }
+                    Some("finished") => set_update_progress.set(Some(100)),
+                    _ => {}
+                }
+            }) as Box<dyn FnMut(JsValue)>);
 
             if let Ok(tauri) = js_sys::Reflect::get(&window, &"__TAURI__".into()) {
                 if let Ok(event) = js_sys::Reflect::get(&tauri, &"event".into()) {
@@ -310,6 +350,11 @@ pub fn App() -> impl IntoView {
                             &RUSTFS_EXIT_EVENT.into(),
                             exit_listener.as_ref().unchecked_ref(),
                         );
+                        let _ = listen_fn.call2(
+                            &event,
+                            &"update-progress".into(),
+                            update_listener.as_ref().unchecked_ref(),
+                        );
                     }
                 }
             }
@@ -317,6 +362,7 @@ pub fn App() -> impl IntoView {
             app_listener.forget();
             rustfs_listener.forget();
             exit_listener.forget();
+            update_listener.forget();
         }
 
         // Fetch initial logs
@@ -489,6 +535,76 @@ pub fn App() -> impl IntoView {
         });
     };
 
+    let check_update = move |_| {
+        if !is_tauri() || is_checking_update.get_untracked() || is_installing_update.get_untracked()
+        {
+            return;
+        }
+
+        set_is_checking_update.set(true);
+        set_update_info.set(None);
+        spawn_local(async move {
+            let result = tauri_invoke("check_for_update", js_sys::Object::new().into()).await;
+            match serde_wasm_bindgen::from_value::<UpdateInfo>(result) {
+                Ok(info) => {
+                    if info.available {
+                        show_toast(
+                            format!(
+                                "发现新版本 {}",
+                                info.version.as_deref().unwrap_or("unknown")
+                            ),
+                            ToastType::Success,
+                        );
+                    } else {
+                        show_toast("当前已是最新版本".to_string(), ToastType::Success);
+                    }
+                    set_update_info.set(Some(info));
+                }
+                Err(_) => {
+                    show_toast("检查更新失败，请查看应用日志".to_string(), ToastType::Error);
+                }
+            }
+            set_is_checking_update.set(false);
+        });
+    };
+
+    let install_update = move |_| {
+        if is_installing_update.get_untracked() {
+            return;
+        }
+
+        let rustfs_running = update_info
+            .get_untracked()
+            .map(|info| info.rustfs_running)
+            .unwrap_or(false);
+        if rustfs_running {
+            let confirmed = web_sys::window()
+                .and_then(|window| {
+                    window
+                        .confirm_with_message(
+                            "更新会停止当前由 Launcher 管理的 RustFS 服务，并在安装后重启 Launcher。是否继续？",
+                        )
+                        .ok()
+                })
+                .unwrap_or(false);
+            if !confirmed {
+                return;
+            }
+        }
+
+        set_is_installing_update.set(true);
+        set_update_progress.set(Some(0));
+        show_toast("正在下载并安装更新…".to_string(), ToastType::Info);
+        spawn_local(async move {
+            let result = tauri_invoke("install_update", js_sys::Object::new().into()).await;
+            if serde_wasm_bindgen::from_value::<CommandResponse>(result).is_err() {
+                set_is_installing_update.set(false);
+                set_update_progress.set(None);
+                show_toast("更新安装失败，请查看应用日志".to_string(), ToastType::Error);
+            }
+        });
+    };
+
     view! {
         <style>{LOGS_CSS}</style>
         <main class="container">
@@ -539,6 +655,68 @@ pub fn App() -> impl IntoView {
                         <strong>{move || if is_running.get() { "Locked" } else { "Editable" }}</strong>
                     </div>
                 </div>
+
+                <section class="update-card">
+                    <div class="update-heading">
+                        <div>
+                            <span class="summary-label">"Software Update"</span>
+                            <strong>"版本与更新"</strong>
+                        </div>
+                        <button
+                            type="button"
+                            class="update-check-btn"
+                            disabled=move || is_checking_update.get() || is_installing_update.get()
+                            on:click=check_update
+                        >
+                            {move || if is_checking_update.get() { "检查中…" } else { "检查更新" }}
+                        </button>
+                    </div>
+
+                    <div class="version-row">
+                        <span>{move || format!(
+                            "Launcher {}",
+                            version_info.get().map(|info| info.launcher_version).unwrap_or_else(|| "—".to_string())
+                        )}</span>
+                        <span>{move || format!(
+                            "RustFS {}",
+                            version_info.get().map(|info| info.rustfs_version).unwrap_or_else(|| "—".to_string())
+                        )}</span>
+                    </div>
+
+                    {move || update_info.get().map(|info| {
+                        if info.available {
+                            let version = info.version.unwrap_or_else(|| "unknown".to_string());
+                            let notes = info.notes.unwrap_or_else(|| "此版本没有更新说明。".to_string());
+                            view! {
+                                <div class="update-available">
+                                    <div>
+                                        <strong>{format!("可更新至 {}", version)}</strong>
+                                        <p>{notes}</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="update-install-btn"
+                                        disabled=move || is_installing_update.get()
+                                        on:click=install_update
+                                    >
+                                        {move || if is_installing_update.get() { "安装中…" } else { "立即更新" }}
+                                    </button>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <p class="update-current">"当前已是最新版本。"</p> }.into_any()
+                        }
+                    })}
+
+                    {move || is_installing_update.get().then(|| view! {
+                        <div class="update-progress">
+                            <div
+                                class="update-progress-bar"
+                                style:width=move || format!("{}%", update_progress.get().unwrap_or(8))
+                            ></div>
+                        </div>
+                    })}
+                </section>
 
                 <ConfigForm
                     config=config

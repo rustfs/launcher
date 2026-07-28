@@ -42,3 +42,19 @@ pub struct CommandResponse {
     pub success: bool,
     pub message: String,
 }
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct AppVersionInfo {
+    pub launcher_version: String,
+    pub rustfs_version: String,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct UpdateInfo {
+    pub available: bool,
+    pub current_version: String,
+    pub version: Option<String>,
+    pub notes: Option<String>,
+    pub date: Option<String>,
+    pub rustfs_running: bool,
+}

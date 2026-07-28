@@ -20,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(
@@ -101,7 +102,10 @@ pub fn run() {
             commands::get_rustfs_logs,
             commands::diagnose_rustfs_binary,
             commands::check_tcp_connection,
-            commands::is_rustfs_process_running
+            commands::is_rustfs_process_running,
+            commands::get_app_version_info,
+            commands::check_for_update,
+            commands::install_update
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")
