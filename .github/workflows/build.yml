@@ -136,7 +136,8 @@ jobs:
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          cargo install trunk tauri-cli
+          cargo install trunk --version 0.21.14 --locked
+          cargo install tauri-cli
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
