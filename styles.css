@@ -216,6 +216,88 @@ input {
   font-weight: 700;
 }
 
+.update-card {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-lg);
+}
+
+.update-heading,
+.update-available,
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.update-heading strong {
+  display: block;
+  margin-top: 5px;
+}
+
+.version-row {
+  justify-content: flex-start;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.update-check-btn,
+.update-install-btn {
+  padding: 8px 12px;
+  border: 1px solid rgba(37, 99, 255, 0.24);
+  border-radius: 12px;
+  background: var(--brand-blue-soft);
+  color: var(--brand-blue-strong);
+  font-weight: 700;
+}
+
+.update-install-btn {
+  flex-shrink: 0;
+  border: none;
+  background: var(--brand-blue);
+  color: #fff;
+}
+
+.update-check-btn:hover:not(:disabled),
+.update-install-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.update-available {
+  align-items: flex-start;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.update-available p,
+.update-current {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.update-progress {
+  height: 5px;
+  margin-top: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--brand-blue-soft);
+}
+
+.update-progress-bar {
+  height: 100%;
+  min-width: 8%;
+  border-radius: inherit;
+  background: var(--brand-blue);
+  transition: width 0.2s ease;
+}
+
 .config-form {
   display: flex;
   flex-direction: column;

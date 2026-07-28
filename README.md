@@ -85,6 +85,11 @@ This ensures the launcher always stays up-to-date with the latest RustFS release
 
 The project uses GitHub Actions for continuous integration and automated releases. See [.github/ACTIONS.md](.github/ACTIONS.md) for details.
 
+Installed launchers can check, download, verify, and install signed application
+updates from the application UI. The update replaces the complete application
+bundle, including the bundled RustFS binary. Release signing and operational
+details are documented in [docs/SELF_UPDATE.md](docs/SELF_UPDATE.md).
+
 For local testing of GitHub Actions workflows, see [.github/TESTING.md](.github/TESTING.md).
 
 ## Recommended IDE Setup

@@ -12,6 +12,10 @@ on:
         description: "Release tag (e.g., 0.1.0). If provided, will build in release mode."
         required: false
         type: string
+      rustfs_tag:
+        description: "RustFS release tag to bundle. Defaults to the latest upstream release."
+        required: false
+        type: string
 
 jobs:
   # Build strategy check - determine build type and version
@@ -132,7 +136,8 @@ jobs:
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          cargo install trunk tauri-cli
+          cargo install trunk --version 0.21.14 --locked
+          cargo install tauri-cli
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -144,10 +149,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.build-check.outputs.release_tag }}
+          REQUESTED_RUSTFS_TAG: ${{ github.event.inputs.rustfs_tag }}
         run: |
-          if [[ -n "$RELEASE_TAG" ]]; then
-            tag="$RELEASE_TAG"
+          if [[ -n "$REQUESTED_RUSTFS_TAG" ]]; then
+            tag="$REQUESTED_RUSTFS_TAG"
             echo "🎯 Using requested upstream release: $tag"
             gh release view "$tag" --repo rustfs/rustfs >/dev/null
           else
@@ -161,6 +166,34 @@ jobs:
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "RUSTFS_VERSION=${tag#v}" >> "$GITHUB_ENV"
+
+      - name: Set launcher version
+        if: needs.build-check.outputs.is_release == 'true'
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.build-check.outputs.version }}
+        run: |
+          version="${RELEASE_VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "❌ Launcher version must be valid SemVer: $RELEASE_VERSION"
+            exit 1
+          fi
+
+          jq --arg version "$version" '.version = $version' \
+            src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
+          sed -i.bak -E "0,/^version = \"[^\"]+\"/s//version = \"$version\"/" src-tauri/Cargo.toml
+          rm -f src-tauri/Cargo.toml.bak
+          echo "LAUNCHER_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Disable updater artifacts for development builds
+        if: needs.build-check.outputs.is_release != 'true'
+        shell: bash
+        run: |
+          jq '.bundle.createUpdaterArtifacts = false' \
+            src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+          mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
 
       - name: Download RustFS binary (macOS aarch64)
         if: matrix.platform == 'macos-latest'
@@ -211,16 +244,23 @@ jobs:
 
       - name: Build Tauri application (macOS)
         if: runner.os == 'macOS'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: cargo tauri build --target ${{ matrix.rust_target }} --bundles app
 
       - name: Build Tauri application (Windows)
         if: runner.os == 'Windows'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: cargo tauri build --target ${{ matrix.rust_target }}
 
       - name: Prepare and rename artifacts (macOS)
         if: runner.os == 'macOS'
         env:
           VERSION: ${{ needs.build-check.outputs.version }}
+          IS_RELEASE: ${{ needs.build-check.outputs.is_release }}
         run: |
           mkdir -p artifacts
 
@@ -232,6 +272,7 @@ jobs:
 
           # 在 workspace 内搜索打包输出，不依赖固定路径
           APP_DIR=$(find src-tauri target -path "*bundle/macos/*.app" -type d -print -quit 2>/dev/null || true)
+          UPDATER_FILE=$(find src-tauri target -path "*bundle/macos/*.app.tar.gz" -type f -print -quit 2>/dev/null || true)
           DMG_FILE=$(find src-tauri target -path "*bundle/dmg/*.dmg" -type f -print -quit 2>/dev/null || true)
 
           echo "发现的 .app 目录：${APP_DIR:-无}"
@@ -258,6 +299,18 @@ jobs:
             exit 1
           fi
 
+          if [ "$IS_RELEASE" != "true" ]; then
+            echo "ℹ️ Development build: updater artifact is disabled"
+          elif [ -n "$UPDATER_FILE" ] && [ -f "${UPDATER_FILE}.sig" ]; then
+            UPDATER_NAME="${ARTIFACT_PREFIX}.app.tar.gz"
+            cp "$UPDATER_FILE" "artifacts/$UPDATER_NAME"
+            cp "${UPDATER_FILE}.sig" "artifacts/${UPDATER_NAME}.sig"
+            echo "✅ Created updater: $UPDATER_NAME"
+          else
+            echo "❌ 未找到 macOS updater 产物或签名"
+            exit 1
+          fi
+
           # Create latest version files
           cd "$GITHUB_WORKSPACE/artifacts"
           LATEST_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
@@ -281,6 +334,7 @@ jobs:
         if: runner.os == 'Windows'
         env:
           VERSION: ${{ needs.build-check.outputs.version }}
+          IS_RELEASE: ${{ needs.build-check.outputs.is_release }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
@@ -323,6 +377,14 @@ jobs:
           if ($exeFiles) {
             $destPath = "artifacts/$ARTIFACT_PREFIX-setup.exe"
             Copy-Item $exeFiles[0].FullName -Destination $destPath
+            $signaturePath = "$($exeFiles[0].FullName).sig"
+            if ($env:IS_RELEASE -eq "true" -and -not (Test-Path $signaturePath)) {
+              Write-Error "未找到 Windows updater 签名: $signaturePath"
+              exit 1
+            }
+            if (Test-Path $signaturePath) {
+              Copy-Item $signaturePath -Destination "$destPath.sig"
+            }
             Write-Host "✅ Created: $destPath"
             $artifactCount++
           } else {
@@ -478,6 +540,50 @@ jobs:
 
           echo "📦 Release assets:"
           ls -la
+
+      - name: Generate updater manifest
+        env:
+          RELEASE_TAG: ${{ needs.build-check.outputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.build-check.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          cd release-assets
+          version="${RELEASE_VERSION#v}"
+          base_url="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}"
+
+          mac_arm_file=$(find . -maxdepth 1 -name "rustfs-launcher-macos-aarch64-*.app.tar.gz" ! -name "*-latest*" -print -quit)
+          mac_x64_file=$(find . -maxdepth 1 -name "rustfs-launcher-macos-x86_64-*.app.tar.gz" ! -name "*-latest*" -print -quit)
+          win_file=$(find . -maxdepth 1 -name "rustfs-launcher-windows-x86_64-*-setup.exe" ! -name "*-latest*" -print -quit)
+
+          for file in "$mac_arm_file" "$mac_x64_file" "$win_file"; do
+            if [ -z "$file" ] || [ ! -f "$file.sig" ]; then
+              echo "❌ Missing updater artifact or signature: ${file:-unknown}"
+              exit 1
+            fi
+          done
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "RustFS Launcher ${version}，包含构建时选定的 RustFS 版本。" \
+            --arg pub_date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg mac_arm_url "$base_url/$(basename "$mac_arm_file")" \
+            --arg mac_arm_sig "$(cat "$mac_arm_file.sig")" \
+            --arg mac_x64_url "$base_url/$(basename "$mac_x64_file")" \
+            --arg mac_x64_sig "$(cat "$mac_x64_file.sig")" \
+            --arg win_url "$base_url/$(basename "$win_file")" \
+            --arg win_sig "$(cat "$win_file.sig")" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": {url: $mac_arm_url, signature: $mac_arm_sig},
+                "darwin-x86_64": {url: $mac_x64_url, signature: $mac_x64_sig},
+                "windows-x86_64": {url: $win_url, signature: $win_sig}
+              }
+            }' > latest.json
+
+          jq empty latest.json
 
       - name: Upload to GitHub Release
         if: needs.build-check.outputs.is_release == 'true'

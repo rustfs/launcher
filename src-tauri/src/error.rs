@@ -25,6 +25,9 @@ pub enum Error {
 
     #[error("RustFS binary failed with exit code: {0}")]
     BinaryFailed(String),
+
+    #[error("Update failed: {0}")]
+    Update(String),
 }
 
 impl Serialize for Error {
