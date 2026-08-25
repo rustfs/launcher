@@ -89,5 +89,12 @@ jobs:
       - name: Run backend Clippy
         run: cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
 
+      - name: Compile tests
+        run: cargo test -p rustfs-launcher --all-features --locked --no-run
+
       - name: Run tests
+        # The Tauri-linked lib test harness fails to start on Windows GHA with
+        # STATUS_ENTRYPOINT_NOT_FOUND (WebView2/COM loader). Windows cfg code is
+        # still compiled by clippy --all-targets and cargo test --no-run.
+        if: runner.os != 'Windows'
         run: cargo test -p rustfs-launcher --all-features --locked
