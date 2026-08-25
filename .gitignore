@@ -1,6 +1,5 @@
 /dist/
 /target/
-/Cargo.lock
 .vscode/
 
 # Downloaded binaries (use build.sh to download)
@@ -13,7 +12,6 @@ artifacts/
 *.dmg
 *.msi
 *.app.zip
-*.exe
 
 # act local testing
 .actrc.local

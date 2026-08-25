@@ -311,14 +311,15 @@ jobs:
             exit 1
           fi
 
-          # Create latest version files
+          # Create latest version files, preserving compound suffixes such as .app.tar.gz.sig
           cd "$GITHUB_WORKSPACE/artifacts"
           LATEST_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
-          for file in rustfs-launcher-*-${VERSION}.*; do
+          VERSIONED_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-${VERSION}"
+          for file in "${VERSIONED_PREFIX}"*; do
             if [ -f "$file" ]; then
-              ext="${file##*.}"
-              cp "$file" "${LATEST_PREFIX}.${ext}"
-              echo "✅ Created latest: ${LATEST_PREFIX}.${ext}"
+              suffix="${file#"$VERSIONED_PREFIX"}"
+              cp "$file" "${LATEST_PREFIX}${suffix}"
+              echo "✅ Created latest: ${LATEST_PREFIX}${suffix}"
             fi
           done
 
@@ -398,25 +399,18 @@ jobs:
             exit 1
           }
 
-          # Create latest version files
+          # Create latest version files, including -setup.exe and .sig
           $LATEST_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
-          Get-ChildItem -Path "artifacts" -Filter "rustfs-launcher-*-$env:VERSION.*" | ForEach-Object {
-            $ext = $_.Extension
-            
-            if ($_.Name -like "*-setup.exe") {
-              # Create the -setup.exe version
-              $setupName = "$LATEST_PREFIX-setup.exe"
-              Copy-Item $_.FullName -Destination "artifacts/$setupName"
-              Write-Host "✅ Created latest: $setupName"
+          $VERSIONED_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-$env:VERSION"
+          Get-ChildItem -Path "artifacts" | Where-Object { $_.Name.StartsWith($VERSIONED_PREFIX) } | ForEach-Object {
+            $suffix = $_.Name.Substring($VERSIONED_PREFIX.Length)
+            Copy-Item $_.FullName -Destination "artifacts/$LATEST_PREFIX$suffix"
+            Write-Host "✅ Created latest: $LATEST_PREFIX$suffix"
 
-              # Create the plain .exe version (as requested)
+            if ($_.Name -like "*-setup.exe") {
               $plainName = "$LATEST_PREFIX.exe"
               Copy-Item $_.FullName -Destination "artifacts/$plainName"
               Write-Host "✅ Created latest: $plainName"
-            } else {
-              $latestName = "$LATEST_PREFIX$ext"
-              Copy-Item $_.FullName -Destination "artifacts/$latestName"
-              Write-Host "✅ Created latest: $latestName"
             }
           }
 
@@ -508,7 +502,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: artifacts
           pattern: rustfs-launcher-*

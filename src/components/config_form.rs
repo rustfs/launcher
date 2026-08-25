@@ -6,6 +6,8 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "dialog"])]
@@ -17,6 +19,18 @@ const CONSOLE_PORT_ERROR_MESSAGE: &str = "Console port must be a number between 
 const PORT_CONFLICT_ERROR_MESSAGE: &str = "API port and console port must be different";
 const DEFAULT_API_PORT: u16 = 9000;
 const DEFAULT_CONSOLE_PORT: u16 = 9001;
+
+fn extract_dropped_paths(payload: &JsValue) -> Vec<String> {
+    if let Ok(paths) = js_sys::Reflect::get(payload, &"paths".into()) {
+        if let Ok(parsed) = serde_wasm_bindgen::from_value::<Vec<String>>(paths) {
+            return parsed;
+        }
+    }
+
+    serde_wasm_bindgen::from_value::<Vec<String>>(payload.clone()).unwrap_or_default()
+}
+
+static DRAG_LISTENERS_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 fn parse_port_input(value: &str, error_message: &'static str) -> Result<Option<u16>, &'static str> {
     let trimmed = value.trim();
@@ -135,6 +149,10 @@ pub fn ConfigForm(
     };
 
     Effect::new(move |_| {
+        if DRAG_LISTENERS_REGISTERED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
         spawn_local(async move {
             if let Some(window) = web_sys::window() {
                 if let Ok(tauri) = js_sys::Reflect::get(&window, &"__TAURI__".into()) {
@@ -151,13 +169,11 @@ pub fn ConfigForm(
 
                                 if let Ok(payload) = js_sys::Reflect::get(&event, &"payload".into())
                                 {
-                                    if let Ok(paths) =
-                                        serde_wasm_bindgen::from_value::<Vec<String>>(payload)
+                                    if let Some(first_path) =
+                                        extract_dropped_paths(&payload).into_iter().next()
                                     {
-                                        if let Some(first_path) = paths.first() {
-                                            set_config.update(|c| c.data_path = first_path.clone());
-                                            set_error_message.set(None);
-                                        }
+                                        set_config.update(|c| c.data_path = first_path);
+                                        set_error_message.set(None);
                                     }
                                 }
                             })
@@ -175,21 +191,32 @@ pub fn ConfigForm(
                             })
                                 as Box<dyn FnMut(JsValue)>);
 
-                            let _ = listen_fn.call2(
-                                &event,
-                                &"tauri://file-drop".into(),
-                                drop_handler.as_ref().unchecked_ref(),
-                            );
-                            let _ = listen_fn.call2(
-                                &event,
-                                &"tauri://file-drop-hover".into(),
-                                hover_handler.as_ref().unchecked_ref(),
-                            );
-                            let _ = listen_fn.call2(
-                                &event,
-                                &"tauri://file-drop-cancelled".into(),
-                                cancel_handler.as_ref().unchecked_ref(),
-                            );
+                            for event_name in ["tauri://drag-drop", "tauri://file-drop"] {
+                                let _ = listen_fn.call2(
+                                    &event,
+                                    &event_name.into(),
+                                    drop_handler.as_ref().unchecked_ref(),
+                                );
+                            }
+                            for event_name in [
+                                "tauri://drag-over",
+                                "tauri://drag-enter",
+                                "tauri://file-drop-hover",
+                            ] {
+                                let _ = listen_fn.call2(
+                                    &event,
+                                    &event_name.into(),
+                                    hover_handler.as_ref().unchecked_ref(),
+                                );
+                            }
+                            for event_name in ["tauri://drag-leave", "tauri://file-drop-cancelled"]
+                            {
+                                let _ = listen_fn.call2(
+                                    &event,
+                                    &event_name.into(),
+                                    cancel_handler.as_ref().unchecked_ref(),
+                                );
+                            }
 
                             drop_handler.forget();
                             hover_handler.forget();

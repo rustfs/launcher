@@ -201,6 +201,25 @@ input {
   background: #ffffff;
 }
 
+button.summary-card {
+  display: block;
+  width: 100%;
+  border: 1px solid transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.summary-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+button.summary-card.clickable:hover {
+  border-color: var(--brand-blue);
+  background: var(--bg-card-strong);
+}
+
 .summary-label {
   display: block;
   color: var(--text-muted);

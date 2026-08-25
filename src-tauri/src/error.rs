@@ -11,8 +11,20 @@ pub enum Error {
     #[error("Data path does not exist: {0}")]
     DataPathNotExist(String),
 
+    #[error("Data path is not a directory: {0}")]
+    DataPathNotDirectory(String),
+
+    #[error("Invalid data path: {0}")]
+    InvalidDataPath(String),
+
     #[error("API port and console port must be different")]
     PortConflict,
+
+    #[error("Port {0} is already in use")]
+    PortInUse(u16),
+
+    #[error("RustFS is already running")]
+    AlreadyRunning,
 
     #[error("RustFS binary not found at {0}")]
     BinaryNotFound(String),
@@ -25,6 +37,9 @@ pub enum Error {
 
     #[error("RustFS binary failed with exit code: {0}")]
     BinaryFailed(String),
+
+    #[error("Invalid service URL")]
+    InvalidUrl,
 
     #[error("Update failed: {0}")]
     Update(String),

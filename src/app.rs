@@ -1,11 +1,13 @@
 use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
-use crate::types::{AppVersionInfo, CommandResponse, LogEntry, LogType, RustFsConfig, UpdateInfo};
+use crate::types::{
+    AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig, UpdateInfo,
+};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -15,8 +17,33 @@ const LOGS_CSS: &str = include_str!("logs.css");
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
-    async fn tauri_invoke(cmd: &str, args: JsValue) -> JsValue;
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke, catch)]
+    async fn tauri_invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
+}
+
+fn js_error_message(err: JsValue) -> String {
+    if let Some(message) = err.as_string() {
+        return message;
+    }
+
+    if let Ok(message) = js_sys::Reflect::get(&err, &"message".into()) {
+        if let Some(message) = message.as_string() {
+            if !message.is_empty() {
+                return message;
+            }
+        }
+    }
+
+    format!("{err:?}")
+}
+
+fn display_host(host: Option<&str>) -> String {
+    match host.map(str::trim).filter(|value| !value.is_empty()) {
+        Some("0.0.0.0") | Some("*") | None => "127.0.0.1".to_string(),
+        Some("::") | Some("[::]") => "[::1]".to_string(),
+        Some(host) if host.contains(':') && !host.starts_with('[') => format!("[{host}]"),
+        Some(host) => host.to_string(),
+    }
 }
 
 // Helper function to check if we're in Tauri environment
@@ -101,6 +128,7 @@ const RUSTFS_LOG_CAPACITY: usize = 1000;
 const DEFAULT_RUSTFS_PORT: u16 = 9000;
 const DEFAULT_CONSOLE_PORT: u16 = 9001;
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
+static HEALTH_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn next_log_id() -> u64 {
     NEXT_LOG_ID.fetch_add(1, Ordering::Relaxed)
@@ -140,19 +168,17 @@ fn sync_runtime_status(
         let host = current.host.unwrap_or_else(|| "127.0.0.1".to_string());
         let port = current.port.unwrap_or(DEFAULT_RUSTFS_PORT);
 
-        let tcp_args = js_sys::Object::new();
-        js_sys::Reflect::set(&tcp_args, &"host".into(), &host.into()).unwrap();
-        js_sys::Reflect::set(&tcp_args, &"port".into(), &port.into()).unwrap();
+        let status_args = js_sys::Object::new();
+        js_sys::Reflect::set(&status_args, &"host".into(), &host.into()).unwrap();
+        js_sys::Reflect::set(&status_args, &"port".into(), &port.into()).unwrap();
 
-        let service_online = tauri_invoke("check_tcp_connection", tcp_args.into())
-            .await
-            .as_bool()
-            .unwrap_or(false);
-        let managed_running =
-            tauri_invoke("is_rustfs_process_running", js_sys::Object::new().into())
-                .await
-                .as_bool()
-                .unwrap_or(false);
+        let (managed_running, service_online) =
+            match tauri_invoke("get_runtime_status", status_args.into()).await {
+                Ok(value) => serde_wasm_bindgen::from_value::<RuntimeStatus>(value)
+                    .map(|status| (status.managed_running, status.service_online))
+                    .unwrap_or((false, false)),
+                Err(_) => (false, false),
+            };
 
         set_service_status.set(service_online);
         set_can_stop.set(managed_running);
@@ -188,7 +214,7 @@ pub fn App() -> impl IntoView {
     });
 
     let show_toast = move |message: String, toast_type: ToastType| {
-        let id = js_sys::Date::now() as u64;
+        let id = next_log_id();
         set_toasts.update(|current| {
             current.push(ToastMessage {
                 message,
@@ -209,26 +235,26 @@ pub fn App() -> impl IntoView {
             );
     };
 
-    // Health Check Polling
     Effect::new(move |_| {
-        if !is_tauri() {
+        if !is_tauri() || HEALTH_CHECK_STARTED.swap(true, Ordering::SeqCst) {
             return;
         }
 
         sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
 
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+
         let closure = Closure::wrap(Box::new(move || {
             sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
         }) as Box<dyn FnMut()>);
 
-        let _ = web_sys::window()
-            .unwrap()
-            .set_interval_with_callback_and_timeout_and_arguments_0(
-                closure.as_ref().unchecked_ref(),
-                3000, // 3 seconds
-            );
-
-        closure.forget(); // Leak the closure to keep it alive
+        let _ = window.set_interval_with_callback_and_timeout_and_arguments_0(
+            closure.as_ref().unchecked_ref(),
+            3000,
+        );
+        closure.forget();
     });
 
     let app_log_writer = set_app_logs;
@@ -244,10 +270,12 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        let version_value =
-            tauri_invoke("get_app_version_info", js_sys::Object::new().into()).await;
-        if let Ok(info) = serde_wasm_bindgen::from_value::<AppVersionInfo>(version_value) {
-            set_version_info.set(Some(info));
+        if let Ok(version_value) =
+            tauri_invoke("get_app_version_info", js_sys::Object::new().into()).await
+        {
+            if let Ok(info) = serde_wasm_bindgen::from_value::<AppVersionInfo>(version_value) {
+                set_version_info.set(Some(info));
+            }
         }
 
         push_log(
@@ -365,15 +393,19 @@ pub fn App() -> impl IntoView {
             update_listener.forget();
         }
 
-        // Fetch initial logs
-        let app_logs_value = tauri_invoke("get_app_logs", js_sys::Object::new().into()).await;
-        if let Ok(logs_vec) = serde_wasm_bindgen::from_value::<Vec<String>>(app_logs_value) {
-            app_log_writer.set(logs_vec.into_iter().map(to_log_entry).collect());
+        if let Ok(app_logs_value) = tauri_invoke("get_app_logs", js_sys::Object::new().into()).await
+        {
+            if let Ok(logs_vec) = serde_wasm_bindgen::from_value::<Vec<String>>(app_logs_value) {
+                app_log_writer.set(logs_vec.into_iter().map(to_log_entry).collect());
+            }
         }
 
-        let rustfs_logs_value = tauri_invoke("get_rustfs_logs", js_sys::Object::new().into()).await;
-        if let Ok(logs_vec) = serde_wasm_bindgen::from_value::<Vec<String>>(rustfs_logs_value) {
-            rustfs_log_writer.set(logs_vec.into_iter().map(to_log_entry).collect());
+        if let Ok(rustfs_logs_value) =
+            tauri_invoke("get_rustfs_logs", js_sys::Object::new().into()).await
+        {
+            if let Ok(logs_vec) = serde_wasm_bindgen::from_value::<Vec<String>>(rustfs_logs_value) {
+                rustfs_log_writer.set(logs_vec.into_iter().map(to_log_entry).collect());
+            }
         }
     });
 
@@ -438,52 +470,84 @@ pub fn App() -> impl IntoView {
             let config_js = serde_wasm_bindgen::to_value(&current_config).unwrap();
             js_sys::Reflect::set(&args, &"config".into(), &config_js).unwrap();
 
-            let result_value = tauri_invoke("launch_rustfs", args.into()).await;
-            let now = js_sys::Date::new_0().to_locale_time_string("en-US");
-            push_log(
-                set_app_logs,
-                format!("[{}] Invoke result: {:?}", now, result_value),
-                APP_LOG_CAPACITY,
-            );
+            let validate_args = js_sys::Object::new();
+            js_sys::Reflect::set(&validate_args, &"config".into(), &config_js).unwrap();
+            if let Err(err) = tauri_invoke("validate_config", validate_args.into()).await {
+                let message = js_error_message(err);
+                show_toast(message.clone(), ToastType::Error);
+                push_log(
+                    set_app_logs,
+                    format!("[ERROR] Config validation failed: {message}"),
+                    APP_LOG_CAPACITY,
+                );
+                set_is_running.set(false);
+                set_can_stop.set(false);
+                return;
+            }
 
-            match serde_wasm_bindgen::from_value::<CommandResponse>(result_value) {
-                Ok(CommandResponse { success, message }) => {
+            match tauri_invoke("launch_rustfs", args.into()).await {
+                Ok(result_value) => {
                     let now = js_sys::Date::new_0().to_locale_time_string("en-US");
                     push_log(
                         set_app_logs,
-                        format!("[{}] Result message: {}", now, message),
+                        format!("[{}] Invoke result: {:?}", now, result_value),
                         APP_LOG_CAPACITY,
                     );
 
-                    if success {
-                        show_toast(
-                            "RustFS launched successfully!".to_string(),
-                            ToastType::Success,
-                        );
-                        let now = js_sys::Date::new_0().to_locale_time_string("en-US");
-                        push_log(
-                            set_app_logs,
-                            format!("[{}] Launch successful!", now),
-                            APP_LOG_CAPACITY,
-                        );
-                    } else {
-                        show_toast(format!("Launch failed: {}", message), ToastType::Error);
-                        let now = js_sys::Date::new_0().to_locale_time_string("en-US");
-                        push_log(
-                            set_app_logs,
-                            format!("[{}] Launch result: {}", now, message),
-                            APP_LOG_CAPACITY,
-                        );
-                        set_is_running.set(false);
-                        set_can_stop.set(false);
+                    match serde_wasm_bindgen::from_value::<CommandResponse>(result_value) {
+                        Ok(CommandResponse { success, message }) => {
+                            let now = js_sys::Date::new_0().to_locale_time_string("en-US");
+                            push_log(
+                                set_app_logs,
+                                format!("[{}] Result message: {}", now, message),
+                                APP_LOG_CAPACITY,
+                            );
+
+                            if success {
+                                show_toast(
+                                    "RustFS launched successfully!".to_string(),
+                                    ToastType::Success,
+                                );
+                                let now = js_sys::Date::new_0().to_locale_time_string("en-US");
+                                push_log(
+                                    set_app_logs,
+                                    format!("[{}] Launch successful!", now),
+                                    APP_LOG_CAPACITY,
+                                );
+                            } else {
+                                show_toast(format!("Launch failed: {}", message), ToastType::Error);
+                                let now = js_sys::Date::new_0().to_locale_time_string("en-US");
+                                push_log(
+                                    set_app_logs,
+                                    format!("[{}] Launch result: {}", now, message),
+                                    APP_LOG_CAPACITY,
+                                );
+                                set_is_running.set(false);
+                                set_can_stop.set(false);
+                            }
+                        }
+                        Err(_) => {
+                            show_toast(
+                                "RustFS launch command failed".to_string(),
+                                ToastType::Error,
+                            );
+                            let now = js_sys::Date::new_0().to_locale_time_string("en-US");
+                            push_log(
+                                set_app_logs,
+                                format!("[{}] Launch completed but response parsing failed", now),
+                                APP_LOG_CAPACITY,
+                            );
+                            set_is_running.set(false);
+                            set_can_stop.set(false);
+                        }
                     }
                 }
-                Err(_) => {
-                    show_toast("RustFS launch command failed".to_string(), ToastType::Error);
-                    let now = js_sys::Date::new_0().to_locale_time_string("en-US");
+                Err(err) => {
+                    let message = js_error_message(err);
+                    show_toast(format!("Launch failed: {message}"), ToastType::Error);
                     push_log(
                         set_app_logs,
-                        format!("[{}] Launch completed but response parsing failed", now),
+                        format!("[ERROR] Launch failed: {message}"),
                         APP_LOG_CAPACITY,
                     );
                     set_is_running.set(false);
@@ -502,34 +566,42 @@ pub fn App() -> impl IntoView {
         );
 
         spawn_local(async move {
-            let result_value = tauri_invoke("stop_rustfs", js_sys::Object::new().into()).await;
-
-            match serde_wasm_bindgen::from_value::<CommandResponse>(result_value) {
-                Ok(res) => {
-                    if res.success {
-                        set_is_running.set(false);
-                        set_can_stop.set(false);
-                        set_service_status.set(false);
-                        show_toast("RustFS stopped".to_string(), ToastType::Success);
-                        push_log(
-                            set_app_logs,
-                            "RustFS stopped successfully".to_string(),
-                            APP_LOG_CAPACITY,
-                        );
-                    } else {
-                        show_toast(format!("Failed to stop: {}", res.message), ToastType::Error);
-                        push_log(
-                            set_app_logs,
-                            format!("Failed to stop: {}", res.message),
-                            APP_LOG_CAPACITY,
-                        );
+            match tauri_invoke("stop_rustfs", js_sys::Object::new().into()).await {
+                Ok(result_value) => {
+                    match serde_wasm_bindgen::from_value::<CommandResponse>(result_value) {
+                        Ok(res) => {
+                            if res.success {
+                                set_is_running.set(false);
+                                set_can_stop.set(false);
+                                set_service_status.set(false);
+                                show_toast("RustFS stopped".to_string(), ToastType::Success);
+                                push_log(
+                                    set_app_logs,
+                                    "RustFS stopped successfully".to_string(),
+                                    APP_LOG_CAPACITY,
+                                );
+                            } else {
+                                show_toast(
+                                    format!("Failed to stop: {}", res.message),
+                                    ToastType::Error,
+                                );
+                                push_log(
+                                    set_app_logs,
+                                    format!("Failed to stop: {}", res.message),
+                                    APP_LOG_CAPACITY,
+                                );
+                            }
+                        }
+                        Err(_) => {
+                            show_toast(
+                                "Failed to parse stop response".to_string(),
+                                ToastType::Error,
+                            );
+                        }
                     }
                 }
-                Err(_) => {
-                    show_toast(
-                        "Failed to parse stop response".to_string(),
-                        ToastType::Error,
-                    );
+                Err(err) => {
+                    show_toast(js_error_message(err), ToastType::Error);
                 }
             }
         });
@@ -544,24 +616,31 @@ pub fn App() -> impl IntoView {
         set_is_checking_update.set(true);
         set_update_info.set(None);
         spawn_local(async move {
-            let result = tauri_invoke("check_for_update", js_sys::Object::new().into()).await;
-            match serde_wasm_bindgen::from_value::<UpdateInfo>(result) {
-                Ok(info) => {
-                    if info.available {
-                        show_toast(
-                            format!(
-                                "发现新版本 {}",
-                                info.version.as_deref().unwrap_or("unknown")
-                            ),
-                            ToastType::Success,
-                        );
-                    } else {
-                        show_toast("当前已是最新版本".to_string(), ToastType::Success);
+            match tauri_invoke("check_for_update", js_sys::Object::new().into()).await {
+                Ok(result) => match serde_wasm_bindgen::from_value::<UpdateInfo>(result) {
+                    Ok(info) => {
+                        if info.available {
+                            show_toast(
+                                format!(
+                                    "发现新版本 {}",
+                                    info.version.as_deref().unwrap_or("unknown")
+                                ),
+                                ToastType::Success,
+                            );
+                        } else {
+                            show_toast("当前已是最新版本".to_string(), ToastType::Success);
+                        }
+                        set_update_info.set(Some(info));
                     }
-                    set_update_info.set(Some(info));
-                }
-                Err(_) => {
-                    show_toast("检查更新失败，请查看应用日志".to_string(), ToastType::Error);
+                    Err(_) => {
+                        show_toast("检查更新失败，请查看应用日志".to_string(), ToastType::Error);
+                    }
+                },
+                Err(err) => {
+                    show_toast(
+                        format!("检查更新失败: {}", js_error_message(err)),
+                        ToastType::Error,
+                    );
                 }
             }
             set_is_checking_update.set(false);
@@ -596,13 +675,60 @@ pub fn App() -> impl IntoView {
         set_update_progress.set(Some(0));
         show_toast("正在下载并安装更新…".to_string(), ToastType::Info);
         spawn_local(async move {
-            let result = tauri_invoke("install_update", js_sys::Object::new().into()).await;
-            if serde_wasm_bindgen::from_value::<CommandResponse>(result).is_err() {
-                set_is_installing_update.set(false);
-                set_update_progress.set(None);
-                show_toast("更新安装失败，请查看应用日志".to_string(), ToastType::Error);
+            match tauri_invoke("install_update", js_sys::Object::new().into()).await {
+                Ok(result) => {
+                    if serde_wasm_bindgen::from_value::<CommandResponse>(result).is_err() {
+                        set_is_installing_update.set(false);
+                        set_update_progress.set(None);
+                        show_toast("更新安装失败，请查看应用日志".to_string(), ToastType::Error);
+                    }
+                }
+                Err(err) => {
+                    set_is_installing_update.set(false);
+                    set_update_progress.set(None);
+                    show_toast(
+                        format!("更新安装失败: {}", js_error_message(err)),
+                        ToastType::Error,
+                    );
+                }
             }
         });
+    };
+
+    let open_service_url = move |url: String| {
+        if !is_tauri() {
+            return;
+        }
+
+        spawn_local(async move {
+            let args = js_sys::Object::new();
+            js_sys::Reflect::set(&args, &"url".into(), &JsValue::from_str(&url)).unwrap();
+            if let Err(err) = tauri_invoke("open_service_url", args.into()).await {
+                show_toast(js_error_message(err), ToastType::Error);
+            }
+        });
+    };
+
+    let open_api = move |_| {
+        let current = config.get_untracked();
+        let host = display_host(current.host.as_deref());
+        let url = format!(
+            "http://{}:{}",
+            host,
+            current.port.unwrap_or(DEFAULT_RUSTFS_PORT)
+        );
+        open_service_url(url);
+    };
+
+    let open_console = move |_| {
+        let current = config.get_untracked();
+        let host = display_host(current.host.as_deref());
+        let url = format!(
+            "http://{}:{}",
+            host,
+            current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT)
+        );
+        open_service_url(url);
     };
 
     view! {
@@ -635,11 +761,25 @@ pub fn App() -> impl IntoView {
                 </div>
 
                 <div class="summary-grid">
-                    <div class="summary-card">
+                    <button
+                        type="button"
+                        class="summary-card"
+                        class:clickable=move || service_status.get()
+                        disabled=move || !service_status.get()
+                        title="Open API endpoint"
+                        on:click=open_api
+                    >
                         <span class="summary-label">"API"</span>
                         <strong>{move || format!(":{}", config.get().port.unwrap_or(DEFAULT_RUSTFS_PORT))}</strong>
-                    </div>
-                    <div class="summary-card">
+                    </button>
+                    <button
+                        type="button"
+                        class="summary-card"
+                        class:clickable=move || service_status.get() && config.get().console_enable
+                        disabled=move || !service_status.get() || !config.get().console_enable
+                        title="Open Console"
+                        on:click=open_console
+                    >
                         <span class="summary-label">"Console"</span>
                         <strong>{move || {
                             let current = config.get();
@@ -649,7 +789,7 @@ pub fn App() -> impl IntoView {
                                 "Disabled".to_string()
                             }
                         }}</strong>
-                    </div>
+                    </button>
                     <div class="summary-card">
                         <span class="summary-label">"Mode"</span>
                         <strong>{move || if is_running.get() { "Locked" } else { "Editable" }}</strong>
