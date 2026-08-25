@@ -581,22 +581,24 @@ mod tests {
     }
 
     fn create_sleep_stub(dir: &Path) -> PathBuf {
-        #[cfg(windows)]
-        {
-            let path = dir.join("stub.cmd");
-            fs::write(&path, "@echo off\r\nping -n 20 127.0.0.1 >nul\r\n").unwrap();
-            path
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let path = dir.join("stub.sh");
-            fs::write(&path, "#!/bin/sh\necho stub started\nexec sleep 20\n").unwrap();
-            let mut permissions = fs::metadata(&path).unwrap().permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&path, permissions).unwrap();
-            path
-        }
+        let src = dir.join("stub.rs");
+        fs::write(
+            &src,
+            "fn main() { std::thread::sleep(std::time::Duration::from_secs(20)); }",
+        )
+        .unwrap();
+        let exe = dir.join(format!("stub{}", std::env::consts::EXE_SUFFIX));
+        let status = Command::new("rustc")
+            .arg(&src)
+            .arg("-o")
+            .arg(&exe)
+            .status()
+            .expect("rustc should be available to build the process stub");
+        assert!(
+            status.success(),
+            "failed to compile process stub with rustc"
+        );
+        exe
     }
 
     #[test]

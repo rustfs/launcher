@@ -13,7 +13,10 @@ license = "Apache-2.0"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "rustfs_launcher_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop builds only need rlib. Including `cdylib` makes `cargo test` fail on
+# Windows with STATUS_ENTRYPOINT_NOT_FOUND because the test harness tries to
+# load the generated DLL. Re-add `staticlib`/`cdylib` if mobile targets return.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
