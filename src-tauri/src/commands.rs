@@ -3,9 +3,11 @@ use crate::error::{Error, Result};
 use crate::process;
 use crate::state::{self, add_app_log};
 use serde::Serialize;
-use std::io::{Error as IoError, ErrorKind};
+use std::io::Error as IoError;
+use std::net::ToSocketAddrs;
 use tauri::async_runtime;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Debug, Serialize)]
@@ -30,6 +32,12 @@ pub struct UpdateInfo {
     pub rustfs_running: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct RuntimeStatus {
+    pub managed_running: bool,
+    pub service_online: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event", rename_all = "camelCase")]
 enum UpdateProgress {
@@ -42,6 +50,18 @@ enum UpdateProgress {
         content_length: Option<u64>,
     },
     Finished,
+}
+
+fn tcp_online(host: String, port: u16) -> bool {
+    let Ok(mut addrs) = (host.as_str(), port).to_socket_addrs() else {
+        return false;
+    };
+    let Some(socket_addr) = addrs.next() else {
+        return false;
+    };
+
+    std::net::TcpStream::connect_timeout(&socket_addr, std::time::Duration::from_millis(1000))
+        .is_ok()
 }
 
 #[tauri::command]
@@ -69,11 +89,9 @@ pub async fn stop_rustfs() -> Result<CommandResponse> {
 
 #[tauri::command]
 pub async fn validate_config(config: RustFsConfig) -> Result<bool> {
-    if config.data_path.is_empty() {
-        return Err(Error::DataPathRequired);
-    }
-    if !std::path::Path::new(&config.data_path).exists() {
-        return Err(Error::DataPathNotExist(config.data_path));
+    process::resolve_data_path(&config.data_path)?;
+    if config.console_enable && config.api_port() == config.console_port() {
+        return Err(Error::PortConflict);
     }
     Ok(true)
 }
@@ -104,28 +122,28 @@ pub async fn get_rustfs_logs() -> Result<Vec<String>> {
 
 #[tauri::command]
 pub async fn check_tcp_connection(host: String, port: u16) -> Result<bool> {
-    let address = format!("{}:{}", host, port);
-    let socket_addr = address
-        .parse()
-        .map_err(|_| Error::Io(IoError::new(ErrorKind::InvalidInput, "Invalid address")))?;
-
-    // Use spawn_blocking for network IO to avoid blocking async runtime
-    let result = async_runtime::spawn_blocking(move || {
-        use std::net::TcpStream;
-        use std::time::Duration;
-
-        // Use connect_timeout to avoid long hangs
-        TcpStream::connect_timeout(&socket_addr, Duration::from_millis(1000)).is_ok()
-    })
-    .await
-    .unwrap_or(false);
-
+    let result = async_runtime::spawn_blocking(move || tcp_online(host, port))
+        .await
+        .unwrap_or(false);
     Ok(result)
 }
 
 #[tauri::command]
 pub async fn is_rustfs_process_running() -> Result<bool> {
     Ok(state::is_rustfs_process_running())
+}
+
+#[tauri::command]
+pub async fn get_runtime_status(host: String, port: u16) -> Result<RuntimeStatus> {
+    let managed_running = state::is_rustfs_process_running();
+    let service_online = async_runtime::spawn_blocking(move || tcp_online(host, port))
+        .await
+        .unwrap_or(false);
+
+    Ok(RuntimeStatus {
+        managed_running,
+        service_online,
+    })
 }
 
 #[tauri::command]
@@ -136,6 +154,28 @@ pub fn get_app_version_info(app: AppHandle) -> AppVersionInfo {
             .unwrap_or("unknown")
             .to_string(),
     }
+}
+
+#[tauri::command]
+fn is_http_url(url: &str) -> bool {
+    let scheme_ok = url.starts_with("http://") || url.starts_with("https://");
+    scheme_ok && !url.chars().any(|ch| ch.is_control() || ch.is_whitespace())
+}
+
+#[tauri::command]
+pub async fn open_service_url(app: AppHandle, url: String) -> Result<CommandResponse> {
+    if !is_http_url(&url) {
+        return Err(Error::InvalidUrl);
+    }
+
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|err| Error::Io(IoError::other(err.to_string())))?;
+
+    Ok(CommandResponse {
+        success: true,
+        message: format!("Opened {url}"),
+    })
 }
 
 #[tauri::command]
@@ -215,4 +255,22 @@ pub async fn install_update(app: AppHandle) -> Result<CommandResponse> {
 
     add_app_log("Update installed; restarting launcher".to_string());
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_http_url, tcp_online};
+
+    #[test]
+    fn tcp_online_rejects_invalid_hosts() {
+        assert!(!tcp_online("not a host".into(), 9));
+    }
+
+    #[test]
+    fn http_url_validation() {
+        assert!(is_http_url("http://127.0.0.1:9000"));
+        assert!(is_http_url("https://example.com/console"));
+        assert!(!is_http_url("file:///etc/passwd"));
+        assert!(!is_http_url("http://evil.example \nhttp://other"));
+    }
 }

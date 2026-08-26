@@ -32,3 +32,34 @@ impl Default for RustFsConfig {
         }
     }
 }
+
+impl RustFsConfig {
+    pub fn bind_host(&self) -> &str {
+        self.host
+            .as_deref()
+            .filter(|host| !host.is_empty())
+            .unwrap_or("127.0.0.1")
+    }
+
+    pub fn api_port(&self) -> u16 {
+        self.port.unwrap_or(9000)
+    }
+
+    pub fn console_port(&self) -> u16 {
+        self.console_port.unwrap_or(9001)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RustFsConfig;
+
+    #[test]
+    fn default_bind_is_loopback() {
+        let config = RustFsConfig::default();
+        assert_eq!(config.bind_host(), "127.0.0.1");
+        assert_eq!(config.api_port(), 9000);
+        assert_eq!(config.console_port(), 9001);
+        assert!(!config.console_enable);
+    }
+}

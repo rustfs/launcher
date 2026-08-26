@@ -40,8 +40,32 @@ The build script will automatically detect your platform and download the approp
 - **macOS Apple Silicon**: `rustfs-macos-aarch64`
 - **macOS Intel**: `rustfs-macos-x86_64`
 - **Windows x86_64**: `rustfs-windows-x86_64.exe`
+- **Windows ARM64**: uses the x86_64 binary via emulation until upstream publishes a native build
 
 This approach reduces download time and storage space by only downloading the binary needed for your current platform.
+
+## Troubleshooting
+
+### macOS: "RustFS Launcher cannot be opened"
+
+GitHub-hosted release builds are not Apple-notarized. After downloading, remove the quarantine flag and open the app once from Finder:
+
+```bash
+xattr -cr "/Applications/RustFS Launcher.app"
+open "/Applications/RustFS Launcher.app"
+```
+
+If the app was already moved to Applications and Gatekeeper still blocks it, Control-click the app and choose **Open**.
+
+### Windows: SmartScreen or missing console window
+
+The installer is an NSIS `.exe`. Windows SmartScreen may warn on first run until Authenticode signing is configured. The launcher starts RustFS without creating an extra console window. If launch fails, check **App Logs** and **RustFS Output** in the UI; bind errors and missing data directories are reported there.
+
+Click the **API** or **Console** summary cards while the service is online to open the endpoint in your default browser.
+
+### Window restore
+
+Closing the window hides the launcher to the tray instead of quitting. On macOS, clicking the Dock icon restores the window. On Windows, use the tray icon or start the app again; the single-instance plugin focuses the existing window.
 
 ## Development Workflow
 

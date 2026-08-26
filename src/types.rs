@@ -58,3 +58,9 @@ pub struct UpdateInfo {
     pub date: Option<String>,
     pub rustfs_running: bool,
 }
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct RuntimeStatus {
+    pub managed_running: bool,
+    pub service_online: bool,
+}

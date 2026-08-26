@@ -62,4 +62,39 @@ jobs:
         run: trunk build
 
       - name: Run tests
-        run: cargo test -p rustfs-launcher --all-features
+        run: cargo test -p rustfs-launcher --all-features --locked
+
+  test-native:
+    name: Native tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Run backend Clippy
+        run: cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
+
+      - name: Compile tests
+        run: cargo test -p rustfs-launcher --all-features --locked --no-run
+
+      - name: Run tests
+        # The Tauri-linked lib test harness fails to start on Windows GHA with
+        # STATUS_ENTRYPOINT_NOT_FOUND (WebView2/COM loader). Windows cfg code is
+        # still compiled by clippy --all-targets and cargo test --no-run.
+        if: runner.os != 'Windows'
+        run: cargo test -p rustfs-launcher --all-features --locked

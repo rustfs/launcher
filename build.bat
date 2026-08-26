@@ -11,12 +11,15 @@ REM Create directories
 if not exist "%BINARIES_DIR%" mkdir "%BINARIES_DIR%"
 if not exist "%TEMP_DIR%" mkdir "%TEMP_DIR%"
 
-REM Detect architecture
+REM Detect architecture. ARM64 Windows falls back to the x86_64 binary
+REM because upstream does not yet publish native ARM64 builds.
 set ARCH=%PROCESSOR_ARCHITECTURE%
-if "%ARCH%"=="AMD64" set ARCH=x86_64
-if "%ARCH%"=="x86" set ARCH=x86_64
+if defined PROCESSOR_ARCHITEW6432 set ARCH=%PROCESSOR_ARCHITEW6432%
+if /I "%ARCH%"=="AMD64" set ARCH=x86_64
+if /I "%ARCH%"=="x86" set ARCH=x86_64
+if /I "%ARCH%"=="ARM64" set ARCH=x86_64
 
-echo Detected platform: Windows %ARCH%
+echo Detected platform: Windows %PROCESSOR_ARCHITECTURE% (using %ARCH% binary)
 echo Downloading RustFS binary for Windows platform...
 
 echo Resolving latest RustFS version...

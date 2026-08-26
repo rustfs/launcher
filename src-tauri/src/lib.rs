@@ -11,6 +11,14 @@ use tauri::{
     Manager, WindowEvent,
 };
 
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -25,17 +33,13 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(
             |app, _arguments, _cwd| {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                focus_main_window(app);
             },
         ))
         .setup(|app| {
             set_app_handle(app.handle().clone());
             add_app_log("RustFS Launcher started".to_string());
 
-            // Setup System Tray
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
@@ -50,12 +54,7 @@ pub fn run() {
                         terminate_rustfs_process();
                         app.exit(0);
                     }
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
+                    "show" => focus_main_window(app),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -69,28 +68,25 @@ pub fn run() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                                focus_main_window(app);
                             }
                         }
                     }
                 })
                 .build(app)?;
 
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-                println!("Main window shown and focused");
+            if app.get_webview_window("main").is_some() {
+                focus_main_window(app.handle());
+                log::info!("Main window shown and focused");
             } else {
-                println!("Warning: Main window not found");
+                log::warn!("Main window not found");
             }
 
             Ok(())
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // Minimize to tray instead of closing
-                window.hide().unwrap();
+                let _ = window.hide();
                 api.prevent_close();
             }
         })
@@ -103,20 +99,24 @@ pub fn run() {
             commands::diagnose_rustfs_binary,
             commands::check_tcp_connection,
             commands::is_rustfs_process_running,
+            commands::get_runtime_status,
             commands::get_app_version_info,
+            commands::open_service_url,
             commands::check_for_update,
             commands::install_update
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")
-        .run(|_app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
                 state::terminate_rustfs_process();
             }
-            tauri::RunEvent::Exit => {
-                state::terminate_rustfs_process();
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                focus_main_window(app_handle);
             }
-            // Reopen event is handled by tauri-plugin-single-instance
-            _ => {}
+            _ => {
+                let _ = app_handle;
+            }
         });
 }
