@@ -95,7 +95,9 @@ RustFS は指定したフォルダーにオブジェクトを保存します。�
 
 ### 7. ストレージを使う
 
-サービスがオンラインの間は、上部の **API** と **Console** のカードをクリックでき、ブラウザーで開けます。
+サービスがオンラインの間は、上部の **API** と **Console** のカードをクリックできます。**Console** は Web 画面を
+開きます。**API** は S3 エンドポイントそのものを開くため、ブラウザーでは XML が返るだけです。このアドレスは
+S3 クライアントから使うためのものです。
 
 S3 クライアントからエンドポイントに接続します。
 
@@ -107,10 +109,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 認証情報にはアクセスキーとシークレットキーを、リージョンには `us-east-1` を指定し、パススタイルの
 アドレッシングを使います。
 
-コンソールを有効にしている場合、**Console** カードをクリックすると RustFS の Web 画面が開きます。
-同じアクセスキーとシークレットキーでサインインしてください。
+コンソールには、同じアクセスキーとシークレットキーでサインインします。
 
-![RustFS Web コンソールのログイン画面](docs/images/rustfs-console.png)
+![RustFS Web コンソールのバケット一覧](docs/images/rustfs-console.png)
 
 ### 8. 停止する、または動かしたままにする
 
@@ -193,8 +194,9 @@ Version & Updates カードの **Check for Updates** を押します。新しい
 **RustFS Output が空のまま** — 最近の RustFS では正常です。ログはデータフォルダーの隣の `logs` フォルダーに
 書き込まれます。ランチャー自身の動きは App Logs で確認できます。
 
-**ブラウザーに `AccessDenied` のような XML が表示される** — コンソールではなく S3 API のポートを開いています。
-コンソールは別のポートで動いており、ランチャーの **Console** カードから開けば正しいアドレスに移動します。
+**ブラウザーに `AccessDenied` のような XML が表示される** — S3 API がブラウザーに返しているだけで、
+故障ではありません。Web 画面が見たいときは **Console** カードを使い、API のアドレスは S3 クライアントに
+設定してください。
 
 **ウィンドウが消えた** — 閉じても隠れるだけです。Windows では通知領域のアイコン、macOS では Dock の
 アイコンから戻せます。
@@ -214,7 +216,10 @@ cargo tauri build   # インストーラーを作成
 
 プルリクエストの前に `make pre-commit` を実行してください。フォーマット、Clippy、フロントエンドのビルド、
 テストがまとめて走ります。詳細は [AGENTS.md](AGENTS.md)、リリース用のワークフローは
-[.github/ACTIONS.md](.github/ACTIONS.md) にあります。
+[.github/ACTIONS.md](.github/ACTIONS.md) にあります。エディターは、
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) と
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) の拡張を入れた
+VS Code が便利です。
 
 ## ライセンス
 

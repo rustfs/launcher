@@ -84,7 +84,8 @@ RustFS 会把对象保存在你指定的文件夹里，并且要求这个文件�
 
 ### 7. 开始使用
 
-服务在线时，顶部的 **API** 和 **Console** 卡片可以点击，会在浏览器中打开。
+服务在线时，顶部的 **API** 和 **Console** 卡片可以点击。**Console** 打开网页界面；**API** 打开的是 S3 端点本身，
+用浏览器访问只会看到一段 XML —— 这个地址是给 S3 客户端用的。
 
 把 S3 客户端指向这个端点：
 
@@ -95,9 +96,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 凭证用你填的 Access Key 和 Secret Key，区域填 `us-east-1`，寻址方式选 path-style。
 
-如果开启了控制台，点击 **Console** 卡片就会打开 RustFS 的网页界面，用同一组 Access Key 和 Secret Key 登录。
+在控制台里，用同一组 Access Key 和 Secret Key 登录即可。
 
-![RustFS 网页控制台登录页](docs/images/rustfs-console.png)
+![RustFS 网页控制台中的存储桶列表](docs/images/rustfs-console.png)
 
 ### 8. 停止，或者让它继续跑
 
@@ -174,8 +175,8 @@ Clear 会清空两个页签。
 **RustFS Output 一直是空的** —— 较新的 RustFS 就是这样，它把日志写进数据文件夹旁边的 `logs` 目录。想看启动器
 自己的动作，请切到 App Logs。
 
-**浏览器里出现 `AccessDenied` 之类的 XML 报错** —— 你打开的是 S3 API 端口，而不是控制台。控制台在自己的端口
-上，点启动器的 **Console** 卡片就会跳到正确地址。
+**浏览器里出现 `AccessDenied` 之类的 XML** —— 这是 S3 API 在回应浏览器，并不是出了故障。想看网页界面就点
+**Console** 卡片，而 API 地址请填到 S3 客户端里。
 
 **窗口不见了** —— 关闭窗口只是把它隐藏起来。Windows 上用通知区域的图标，macOS 上点 Dock 图标即可。
 
@@ -193,7 +194,9 @@ cargo tauri build   # 打包安装程序
 ```
 
 提交 PR 前先跑一次 `make pre-commit`，它会执行格式检查、Clippy、前端构建和测试。更多约定见
-[AGENTS.md](AGENTS.md)，发布流程见 [.github/ACTIONS.md](.github/ACTIONS.md)。
+[AGENTS.md](AGENTS.md)，发布流程见 [.github/ACTIONS.md](.github/ACTIONS.md)。编辑器推荐 VS Code，配合
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) 和
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) 插件。
 
 ## 许可证
 

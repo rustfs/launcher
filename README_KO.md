@@ -91,7 +91,9 @@ ID는 무엇인지)이 표시됩니다.
 
 ### 7. 스토리지 사용하기
 
-서비스가 온라인인 동안에는 위쪽 **API**와 **Console** 카드를 클릭할 수 있고, 브라우저에서 열립니다.
+서비스가 온라인인 동안에는 위쪽 **API**와 **Console** 카드를 클릭할 수 있습니다. **Console**은 웹 화면을 열고,
+**API**는 S3 엔드포인트 자체를 엽니다. 브라우저로 열면 XML 응답만 보이는데, 이 주소는 S3 클라이언트용이기
+때문입니다.
 
 S3 클라이언트를 엔드포인트로 향하게 합니다.
 
@@ -102,10 +104,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 자격 증명은 액세스 키와 시크릿 키, 리전은 `us-east-1`, 주소 방식은 path-style을 사용하세요.
 
-콘솔을 켰다면 **Console** 카드를 클릭해 RustFS 웹 화면을 열 수 있습니다. 같은 액세스 키와 시크릿 키로
-로그인하세요.
+콘솔에는 같은 액세스 키와 시크릿 키로 로그인합니다.
 
-![RustFS 웹 콘솔 로그인 화면](docs/images/rustfs-console.png)
+![RustFS 웹 콘솔의 버킷 목록](docs/images/rustfs-console.png)
 
 ### 8. 멈추거나, 계속 켜 두기
 
@@ -184,8 +185,8 @@ Version & Updates 카드에서 **Check for Updates**를 누르세요. 새 릴리
 **RustFS Output이 계속 비어 있음** — 최근 RustFS 빌드에서는 정상입니다. 로그는 데이터 폴더 옆 `logs`
 폴더에 기록됩니다. 런처의 동작은 App Logs에서 확인하세요.
 
-**브라우저에 `AccessDenied` 같은 XML 오류가 보임** — 콘솔이 아니라 S3 API 포트를 연 것입니다. 콘솔은 별도
-포트를 쓰며, 런처의 **Console** 카드를 누르면 올바른 주소로 이동합니다.
+**브라우저에 `AccessDenied` 같은 XML이 보임** — S3 API가 브라우저에 응답한 것일 뿐 고장이 아닙니다. 웹 화면이
+필요하면 **Console** 카드를 쓰고, API 주소는 S3 클라이언트에 넣어 주세요.
 
 **창이 사라짐** — 닫아도 숨겨질 뿐입니다. Windows에서는 알림 영역 아이콘, macOS에서는 Dock 아이콘을
 사용하세요.
@@ -205,7 +206,9 @@ cargo tauri build   # 설치 파일 생성
 
 풀 리퀘스트를 보내기 전에 `make pre-commit`을 실행하세요. 포맷 검사, Clippy, 프런트엔드 빌드, 테스트가 함께
 돌아갑니다. 자세한 내용은 [AGENTS.md](AGENTS.md), 릴리스 워크플로는 [.github/ACTIONS.md](.github/ACTIONS.md)를
-참고하세요.
+참고하세요. 편집기는 [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)와
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) 확장을 설치한
+VS Code가 편합니다.
 
 ## 라이선스
 

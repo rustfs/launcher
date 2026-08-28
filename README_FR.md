@@ -97,8 +97,9 @@ données inexistant et un port déjà pris.
 
 ### 7. Utiliser le stockage
 
-Tant que le service est en ligne, les cartes **API** et **Console** en haut deviennent cliquables et s'ouvrent
-dans votre navigateur.
+Tant que le service est en ligne, les cartes **API** et **Console** en haut deviennent cliquables. **Console**
+ouvre l'interface web ; **API** ouvre le point de terminaison S3 lui-même, dont un navigateur ne reçoit qu'une
+réponse XML — cette adresse est faite pour les clients S3.
 
 Dirigez un client S3 vers le point de terminaison :
 
@@ -110,10 +111,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp rapport.pdf s3://demo/
 Utilisez votre access key et votre secret key comme identifiants, `us-east-1` comme région, et l'adressage de
 type path-style.
 
-Si vous avez activé la console, un clic sur la carte **Console** ouvre l'interface web de RustFS. Connectez-vous
-avec les mêmes access key et secret key.
+Dans la console, connectez-vous avec ces mêmes access key et secret key.
 
-![La page de connexion de la console web RustFS](docs/images/rustfs-console.png)
+![Les buckets dans la console web RustFS](docs/images/rustfs-console.png)
 
 ### 8. Arrêter le serveur, ou le laisser tourner
 
@@ -199,8 +199,9 @@ l'a pas démarré. Arrêtez ce processus là où vous l'avez lancé, ou changez 
 **RustFS Output reste vide** — c'est normal avec les versions récentes de RustFS : elles écrivent leurs journaux
 dans le dossier `logs` voisin de votre dossier de données. Pour voir ce que fait le launcher, regardez App Logs.
 
-**Le navigateur affiche une erreur XML du type `AccessDenied`** — vous avez ouvert le port de l'API S3 au lieu
-de la console. La console a son propre port, et la carte **Console** du launcher mène à la bonne adresse.
+**Le navigateur affiche du XML du type `AccessDenied`** — c'est l'API S3 qui répond à un navigateur, rien n'est
+cassé. Pour une interface web, passez par la carte **Console** ; l'adresse de l'API, elle, est faite pour un
+client S3.
 
 **La fenêtre a disparu** — la fermer ne fait que la masquer. Utilisez l'icône de la zone de notification sous
 Windows, ou celle du Dock sous macOS.
@@ -221,7 +222,10 @@ cargo tauri build   # produire les installeurs
 
 Lancez `make pre-commit` avant d'ouvrir une pull request : formatage, Clippy, build du frontend et tests. Les
 détails sont dans [AGENTS.md](AGENTS.md), les workflows de publication dans
-[.github/ACTIONS.md](.github/ACTIONS.md).
+[.github/ACTIONS.md](.github/ACTIONS.md). Pour éditer le code, VS Code avec les extensions
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) et
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) fait très bien
+l'affaire.
 
 ## Licence
 

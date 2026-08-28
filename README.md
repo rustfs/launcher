@@ -93,8 +93,9 @@ exist and a port that is already taken.
 
 ### 7. Use the storage
 
-While the service is online, the **API** and **Console** cards at the top become clickable and open in your
-browser.
+While the service is online, the **API** and **Console** cards at the top become clickable. **Console** opens
+the web interface; **API** opens the S3 endpoint itself, and a browser only gets an XML answer from it — that
+address is meant for S3 clients.
 
 Point an S3 client at the endpoint:
 
@@ -105,10 +106,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 Use your access key and secret key as the credentials, `us-east-1` as the region, and path-style addressing.
 
-If you enabled the console, clicking the **Console** card opens the RustFS web interface. Sign in with the same
-access key and secret key.
+In the console, sign in with that same access key and secret key.
 
-![The RustFS web console sign-in page](docs/images/rustfs-console.png)
+![Buckets in the RustFS web console](docs/images/rustfs-console.png)
 
 ### 8. Stop the server, or leave it running
 
@@ -191,8 +191,8 @@ did not start it. Stop that process where you started it, or move the launcher t
 **RustFS Output stays empty** — that is normal for recent RustFS builds; they write their logs into the `logs`
 folder next to your data directory. Use App Logs to see what the launcher itself is doing.
 
-**The browser shows an XML error like `AccessDenied`** — you opened the S3 API port instead of the console. The
-console is on its own port, and the launcher's Console card takes you to the right address.
+**The browser shows XML like `AccessDenied`** — that is the S3 API answering a browser, and nothing is broken.
+Use the Console card for a web interface, and give the API address to an S3 client instead.
 
 **The window disappeared** — closing the window only hides it. Use the tray icon on Windows, or the Dock icon on
 macOS.
@@ -212,7 +212,10 @@ cargo tauri build   # produce installers
 
 Run `make pre-commit` before sending a pull request; it runs formatting, Clippy, the frontend build, and the
 tests. More detail lives in [AGENTS.md](AGENTS.md), the release workflows in
-[.github/ACTIONS.md](.github/ACTIONS.md).
+[.github/ACTIONS.md](.github/ACTIONS.md). For editing, VS Code with the
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) and
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extensions is a
+good setup.
 
 ## License
 

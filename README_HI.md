@@ -92,8 +92,9 @@ RustFS ऑब्जेक्ट उसी फ़ोल्डर में रख
 
 ### 7. स्टोरेज इस्तेमाल करें
 
-सर्विस ऑनलाइन रहने पर ऊपर के **API** और **Console** कार्ड क्लिक करने लायक हो जाते हैं और ब्राउज़र में खुलते
-हैं।
+सर्विस ऑनलाइन रहने पर ऊपर के **API** और **Console** कार्ड क्लिक करने लायक हो जाते हैं। **Console** वेब इंटरफ़ेस
+खोलता है; **API** खुद S3 एंडपॉइंट खोलता है, जहाँ ब्राउज़र को सिर्फ़ XML जवाब मिलता है — वह पता S3 क्लाइंट के लिए
+है।
 
 किसी S3 क्लाइंट को इस एंडपॉइंट पर लगाएँ:
 
@@ -104,10 +105,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 क्रेडेंशियल में अपनी access key और secret key दें, रीजन `us-east-1` रखें, और path-style एड्रेसिंग चुनें।
 
-अगर कंसोल चालू है, तो **Console** कार्ड पर क्लिक करने से RustFS का वेब इंटरफ़ेस खुलता है। वहाँ उसी access key
-और secret key से साइन इन करें।
+कंसोल में उसी access key और secret key से साइन इन करें।
 
-![RustFS वेब कंसोल का साइन-इन पेज](docs/images/rustfs-console.png)
+![RustFS वेब कंसोल में बकेट की सूची](docs/images/rustfs-console.png)
 
 ### 8. सर्वर बंद करें, या चलने दें
 
@@ -187,8 +187,8 @@ Version & Updates कार्ड में **Check for Updates** दबाए�
 **RustFS Output खाली रहता है** — नए RustFS बिल्ड के साथ यह सामान्य है; वे अपने लॉग डेटा फ़ोल्डर के बगल वाले
 `logs` फ़ोल्डर में लिखते हैं। लॉन्चर क्या कर रहा है, यह App Logs में दिखता है।
 
-**ब्राउज़र में `AccessDenied` जैसी XML त्रुटि दिखती है** — आपने कंसोल की जगह S3 API पोर्ट खोल लिया है। कंसोल
-अपने अलग पोर्ट पर होता है, और लॉन्चर का **Console** कार्ड आपको सही पते पर ले जाता है।
+**ब्राउज़र में `AccessDenied` जैसा XML दिखता है** — यह S3 API का ब्राउज़र को दिया गया जवाब है, कुछ खराब नहीं
+हुआ है। वेब इंटरफ़ेस के लिए **Console** कार्ड इस्तेमाल करें, और API का पता किसी S3 क्लाइंट में डालें।
 
 **विंडो गायब हो गई** — बंद करने पर वह सिर्फ़ छिपती है। Windows पर ट्रे आइकॉन और macOS पर Dock आइकॉन से वापस
 लाएँ।
@@ -208,7 +208,10 @@ cargo tauri build   # इंस्टॉलर बनाएँ
 
 पुल रिक्वेस्ट भेजने से पहले `make pre-commit` चलाएँ; इससे फ़ॉर्मैटिंग, Clippy, फ़्रंटएंड बिल्ड और टेस्ट एक साथ
 चल जाते हैं। बाकी जानकारी [AGENTS.md](AGENTS.md) में है, और रिलीज़ वर्कफ़्लो
-[.github/ACTIONS.md](.github/ACTIONS.md) में।
+[.github/ACTIONS.md](.github/ACTIONS.md) में। कोड लिखने के लिए
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) और
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) एक्सटेंशन वाला
+VS Code अच्छा विकल्प है।
 
 ## लाइसेंस
 

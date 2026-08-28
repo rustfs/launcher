@@ -97,8 +97,9 @@ nicht gibt, und ein bereits belegter Port.
 
 ### 7. Den Speicher benutzen
 
-Solange der Dienst online ist, lassen sich die Karten **API** und **Console** oben anklicken und öffnen sich im
-Browser.
+Solange der Dienst online ist, lassen sich die Karten **API** und **Console** oben anklicken. **Console** öffnet
+die Weboberfläche; **API** öffnet den S3-Endpunkt selbst, von dem ein Browser nur eine XML-Antwort bekommt –
+diese Adresse ist für S3-Clients gedacht.
 
 Richten Sie einen S3-Client auf den Endpunkt:
 
@@ -110,10 +111,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp bericht.pdf s3://demo/
 Als Zugangsdaten dienen Access Key und Secret Key, als Region `us-east-1`, und die Adressierung erfolgt im
 Path-Style.
 
-Wenn Sie die Konsole aktiviert haben, öffnet ein Klick auf die Karte **Console** die RustFS-Weboberfläche.
-Melden Sie sich dort mit demselben Access Key und Secret Key an.
+In der Konsole melden Sie sich mit demselben Access Key und Secret Key an.
 
-![Die Anmeldeseite der RustFS-Weboberfläche](docs/images/rustfs-console.png)
+![Buckets in der RustFS-Weboberfläche](docs/images/rustfs-console.png)
 
 ### 8. Stoppen oder weiterlaufen lassen
 
@@ -200,9 +200,8 @@ nicht gestartet hat. Beenden Sie diesen Prozess dort, wo Sie ihn gestartet haben
 **RustFS Output bleibt leer** – das ist bei neueren RustFS-Builds normal, sie schreiben ihre Protokolle in den
 `logs`-Ordner neben Ihrem Datenordner. Was der Launcher selbst tut, steht in den App Logs.
 
-**Der Browser zeigt einen XML-Fehler wie `AccessDenied`** – Sie haben den S3-API-Port statt der Konsole
-geöffnet. Die Konsole hat einen eigenen Port, und die Karte **Console** im Launcher führt zur richtigen
-Adresse.
+**Der Browser zeigt XML wie `AccessDenied`** – das ist die S3-API, die einem Browser antwortet; es ist nichts
+kaputt. Für eine Weboberfläche nehmen Sie die Karte **Console**, die API-Adresse gehört in einen S3-Client.
 
 **Das Fenster ist verschwunden** – Schließen versteckt es nur. Benutzen Sie das Symbol im Infobereich unter
 Windows oder das Dock-Symbol unter macOS.
@@ -222,7 +221,9 @@ cargo tauri build   # Installationspakete erzeugen
 
 Führen Sie vor einem Pull Request `make pre-commit` aus; das prüft Formatierung, Clippy, den Frontend-Build und
 die Tests. Mehr Details stehen in [AGENTS.md](AGENTS.md), die Release-Workflows in
-[.github/ACTIONS.md](.github/ACTIONS.md).
+[.github/ACTIONS.md](.github/ACTIONS.md). Zum Entwickeln eignet sich VS Code mit den Erweiterungen
+[Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) und
+[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
 
 ## Lizenz
 
