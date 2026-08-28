@@ -622,23 +622,29 @@ pub fn App() -> impl IntoView {
                         if info.available {
                             show_toast(
                                 format!(
-                                    "发现新版本 {}",
+                                    "Update available: {}",
                                     info.version.as_deref().unwrap_or("unknown")
                                 ),
                                 ToastType::Success,
                             );
                         } else {
-                            show_toast("当前已是最新版本".to_string(), ToastType::Success);
+                            show_toast(
+                                "You are running the latest version".to_string(),
+                                ToastType::Success,
+                            );
                         }
                         set_update_info.set(Some(info));
                     }
                     Err(_) => {
-                        show_toast("检查更新失败，请查看应用日志".to_string(), ToastType::Error);
+                        show_toast(
+                            "Update check failed. See App Logs for details.".to_string(),
+                            ToastType::Error,
+                        );
                     }
                 },
                 Err(err) => {
                     show_toast(
-                        format!("检查更新失败: {}", js_error_message(err)),
+                        format!("Update check failed: {}", js_error_message(err)),
                         ToastType::Error,
                     );
                 }
@@ -661,7 +667,7 @@ pub fn App() -> impl IntoView {
                 .and_then(|window| {
                     window
                         .confirm_with_message(
-                            "更新会停止当前由 Launcher 管理的 RustFS 服务，并在安装后重启 Launcher。是否继续？",
+                            "Updating stops the RustFS service managed by this launcher and restarts the launcher once the update is installed. Continue?",
                         )
                         .ok()
                 })
@@ -673,21 +679,27 @@ pub fn App() -> impl IntoView {
 
         set_is_installing_update.set(true);
         set_update_progress.set(Some(0));
-        show_toast("正在下载并安装更新…".to_string(), ToastType::Info);
+        show_toast(
+            "Downloading and installing the update…".to_string(),
+            ToastType::Info,
+        );
         spawn_local(async move {
             match tauri_invoke("install_update", js_sys::Object::new().into()).await {
                 Ok(result) => {
                     if serde_wasm_bindgen::from_value::<CommandResponse>(result).is_err() {
                         set_is_installing_update.set(false);
                         set_update_progress.set(None);
-                        show_toast("更新安装失败，请查看应用日志".to_string(), ToastType::Error);
+                        show_toast(
+                            "Update installation failed. See App Logs for details.".to_string(),
+                            ToastType::Error,
+                        );
                     }
                 }
                 Err(err) => {
                     set_is_installing_update.set(false);
                     set_update_progress.set(None);
                     show_toast(
-                        format!("更新安装失败: {}", js_error_message(err)),
+                        format!("Update installation failed: {}", js_error_message(err)),
                         ToastType::Error,
                     );
                 }
@@ -800,7 +812,7 @@ pub fn App() -> impl IntoView {
                     <div class="update-heading">
                         <div>
                             <span class="summary-label">"Software Update"</span>
-                            <strong>"版本与更新"</strong>
+                            <strong>"Version & Updates"</strong>
                         </div>
                         <button
                             type="button"
@@ -808,7 +820,7 @@ pub fn App() -> impl IntoView {
                             disabled=move || is_checking_update.get() || is_installing_update.get()
                             on:click=check_update
                         >
-                            {move || if is_checking_update.get() { "检查中…" } else { "检查更新" }}
+                            {move || if is_checking_update.get() { "Checking…" } else { "Check for Updates" }}
                         </button>
                     </div>
 
@@ -826,11 +838,11 @@ pub fn App() -> impl IntoView {
                     {move || update_info.get().map(|info| {
                         if info.available {
                             let version = info.version.unwrap_or_else(|| "unknown".to_string());
-                            let notes = info.notes.unwrap_or_else(|| "此版本没有更新说明。".to_string());
+                            let notes = info.notes.unwrap_or_else(|| "No release notes for this version.".to_string());
                             view! {
                                 <div class="update-available">
                                     <div>
-                                        <strong>{format!("可更新至 {}", version)}</strong>
+                                        <strong>{format!("Update to {}", version)}</strong>
                                         <p>{notes}</p>
                                     </div>
                                     <button
@@ -839,12 +851,12 @@ pub fn App() -> impl IntoView {
                                         disabled=move || is_installing_update.get()
                                         on:click=install_update
                                     >
-                                        {move || if is_installing_update.get() { "安装中…" } else { "立即更新" }}
+                                        {move || if is_installing_update.get() { "Installing…" } else { "Update Now" }}
                                     </button>
                                 </div>
                             }.into_any()
                         } else {
-                            view! { <p class="update-current">"当前已是最新版本。"</p> }.into_any()
+                            view! { <p class="update-current">"You are running the latest version."</p> }.into_any()
                         }
                     })}
 
