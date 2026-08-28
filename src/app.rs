@@ -127,6 +127,7 @@ const APP_LOG_CAPACITY: usize = 100;
 const RUSTFS_LOG_CAPACITY: usize = 1000;
 const DEFAULT_RUSTFS_PORT: u16 = 9000;
 const DEFAULT_CONSOLE_PORT: u16 = 9001;
+const CONSOLE_UI_PATH: &str = "/rustfs/console/";
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 static HEALTH_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -735,10 +736,13 @@ pub fn App() -> impl IntoView {
     let open_console = move |_| {
         let current = config.get_untracked();
         let host = display_host(current.host.as_deref());
+        // The console port root answers with an S3 "AccessDenied" document;
+        // the web console itself is served from this sub-path.
         let url = format!(
-            "http://{}:{}",
+            "http://{}:{}{}",
             host,
-            current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT)
+            current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT),
+            CONSOLE_UI_PATH
         );
         open_service_url(url);
     };
