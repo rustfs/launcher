@@ -1,3 +1,4 @@
+use crate::binaries;
 use crate::config::RustFsConfig;
 use crate::error::{Error, Result};
 use crate::state::{
@@ -12,27 +13,6 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 const EARLY_EXIT_WAIT: Duration = Duration::from_millis(400);
-
-pub(crate) fn inferred_binary_name_for(os: &str, arch: &str) -> &'static str {
-    match (os, arch) {
-        ("macos", "aarch64") => "rustfs-macos-aarch64",
-        ("macos", "x86_64") => "rustfs-macos-x86_64",
-        ("windows", "x86_64") | ("windows", "aarch64") => "rustfs-windows-x86_64.exe",
-        ("linux", "x86_64") => "rustfs-linux-x86_64",
-        ("linux", "aarch64") => "rustfs-linux-aarch64",
-        _ => {
-            if os == "windows" {
-                "rustfs-windows-x86_64.exe"
-            } else {
-                "rustfs"
-            }
-        }
-    }
-}
-
-fn inferred_binary_name() -> &'static str {
-    inferred_binary_name_for(std::env::consts::OS, std::env::consts::ARCH)
-}
 
 pub(crate) fn format_bind_address(host: &str, port: u16) -> String {
     if host.contains(':') && !host.starts_with('[') {
@@ -145,6 +125,17 @@ fn resource_dir_from_app() -> Option<PathBuf> {
 }
 
 fn get_binary_path() -> Result<PathBuf> {
+    // A binary installed through the in-app RustFS update wins over the copy
+    // bundled with the launcher, as long as it is not the older of the two.
+    if let Some((path, record)) = binaries::installed_binary() {
+        add_app_log(format!(
+            "Using RustFS {} installed by the launcher at {}",
+            record.version,
+            path.display()
+        ));
+        return Ok(path);
+    }
+
     let current_exe = std::env::current_exe().map_err(Error::Io)?;
     let exe_dir = current_exe.parent().ok_or_else(|| {
         Error::Io(std::io::Error::new(
@@ -152,7 +143,7 @@ fn get_binary_path() -> Result<PathBuf> {
             "Parent directory of executable not found",
         ))
     })?;
-    let binary_name = inferred_binary_name();
+    let binary_name = binaries::binary_name()?;
     let env_dir = std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from);
     let cwd = std::env::current_dir().ok();
     let resource_dir = resource_dir_from_app();
@@ -189,7 +180,7 @@ fn get_binary_path() -> Result<PathBuf> {
     ))
 }
 
-fn apply_no_window(cmd: &mut Command) {
+pub(crate) fn apply_no_window(cmd: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -446,26 +437,6 @@ mod tests {
     use crate::config::RustFsConfig;
     use std::fs;
     use std::path::PathBuf;
-
-    #[test]
-    fn infers_platform_binary_names() {
-        assert_eq!(
-            inferred_binary_name_for("macos", "aarch64"),
-            "rustfs-macos-aarch64"
-        );
-        assert_eq!(
-            inferred_binary_name_for("macos", "x86_64"),
-            "rustfs-macos-x86_64"
-        );
-        assert_eq!(
-            inferred_binary_name_for("windows", "x86_64"),
-            "rustfs-windows-x86_64.exe"
-        );
-        assert_eq!(
-            inferred_binary_name_for("windows", "aarch64"),
-            "rustfs-windows-x86_64.exe"
-        );
-    }
 
     #[test]
     fn wraps_ipv6_bind_addresses() {
