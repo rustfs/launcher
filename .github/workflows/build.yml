@@ -195,72 +195,117 @@ jobs:
             src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
           mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
 
-      - name: Download RustFS binary (macOS aarch64)
-        if: matrix.platform == 'macos-latest'
+      - name: Resolve RustFS asset for this platform
+        id: rustfs_asset
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
         run: |
-          ASSET_NAME="rustfs-macos-aarch64-latest.zip"
-          mkdir -p src-tauri/binaries
-          gh release download "${{ steps.upstream.outputs.tag }}" \
-            --repo rustfs/rustfs \
-            --pattern "$ASSET_NAME" \
-            --dir . \
-            --clobber
-          unzip -q "$ASSET_NAME" -d rustfs-temp
-          cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-aarch64
-          chmod +x src-tauri/binaries/rustfs-macos-aarch64
-          rm -rf rustfs-temp "$ASSET_NAME"
+          case "${{ matrix.os_name }}-${{ matrix.arch }}" in
+            macos-aarch64) slug="rustfs-macos-aarch64"; dest="src-tauri/binaries/rustfs-macos-aarch64" ;;
+            macos-x86_64) slug="rustfs-macos-x86_64"; dest="src-tauri/binaries/rustfs-macos-x86_64" ;;
+            windows-x86_64) slug="rustfs-windows-x86_64"; dest="src-tauri/binaries/rustfs-windows-x86_64.exe" ;;
+            *)
+              echo "❌ Unsupported launcher matrix: ${{ matrix.os_name }}-${{ matrix.arch }}"
+              exit 1
+              ;;
+          esac
 
-      - name: Download RustFS binary (macOS x86_64)
-        if: matrix.platform == 'macos-15-intel'
+          asset_list=$(gh release view "$UPSTREAM_TAG" --repo rustfs/rustfs --json assets --jq '.assets[].name')
+          selected=""
+          if selected=$(bash scripts/select-rustfs-asset.sh "$slug" "$UPSTREAM_TAG" "$asset_list"); then
+            true
+          else
+            selected=""
+          fi
+
+          if [[ -z "$selected" ]]; then
+            echo "⚠️ No RustFS asset for $slug in $UPSTREAM_TAG"
+            echo "available assets:"
+            printf '%s\n' "$asset_list"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "slug=$slug" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "✅ Using $selected"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          echo "asset=$selected" >> "$GITHUB_OUTPUT"
+          echo "dest=$dest" >> "$GITHUB_OUTPUT"
+
+      - name: Download RustFS binary (Unix)
+        if: runner.os != 'Windows' && steps.rustfs_asset.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ASSET_NAME="rustfs-macos-x86_64-latest.zip"
           mkdir -p src-tauri/binaries
           gh release download "${{ steps.upstream.outputs.tag }}" \
             --repo rustfs/rustfs \
-            --pattern "$ASSET_NAME" \
+            --pattern "${{ steps.rustfs_asset.outputs.asset }}" \
             --dir . \
             --clobber
-          unzip -q "$ASSET_NAME" -d rustfs-temp
-          cp rustfs-temp/rustfs src-tauri/binaries/rustfs-macos-x86_64
-          chmod +x src-tauri/binaries/rustfs-macos-x86_64
-          rm -rf rustfs-temp "$ASSET_NAME"
+          unzip -q "${{ steps.rustfs_asset.outputs.asset }}" -d rustfs-temp
+          if [ -f rustfs-temp/rustfs ]; then
+            cp rustfs-temp/rustfs "${{ steps.rustfs_asset.outputs.dest }}"
+          else
+            echo "❌ rustfs binary missing from ${{ steps.rustfs_asset.outputs.asset }}"
+            ls -la rustfs-temp
+            exit 1
+          fi
+          chmod +x "${{ steps.rustfs_asset.outputs.dest }}"
+          rm -rf rustfs-temp "${{ steps.rustfs_asset.outputs.asset }}"
 
       - name: Download RustFS binary (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.rustfs_asset.outputs.available == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $AssetName = "rustfs-windows-x86_64-latest.zip"
-          New-Item -ItemType Directory -Force -Path src-tauri\binaries
+          $AssetName = "${{ steps.rustfs_asset.outputs.asset }}"
+          $Dest = "${{ steps.rustfs_asset.outputs.dest }}"
+          New-Item -ItemType Directory -Force -Path src-tauri\binaries | Out-Null
           gh release download "${{ steps.upstream.outputs.tag }}" --repo rustfs/rustfs --pattern $AssetName --dir . --clobber
           Expand-Archive -Path $AssetName -DestinationPath "rustfs-temp" -Force
-          Copy-Item "rustfs-temp\rustfs.exe" -Destination "src-tauri\binaries\rustfs-windows-x86_64.exe"
+          if (Test-Path "rustfs-temp\rustfs.exe") {
+            Copy-Item "rustfs-temp\rustfs.exe" -Destination $Dest
+          } elseif (Test-Path "rustfs-temp\rustfs") {
+            Copy-Item "rustfs-temp\rustfs" -Destination $Dest
+          } else {
+            Write-Error "rustfs binary missing from $AssetName"
+            Get-ChildItem rustfs-temp
+            exit 1
+          }
           Remove-Item -Recurse -Force rustfs-temp, $AssetName
 
+      - name: Skip unsupported platform
+        if: steps.rustfs_asset.outputs.available != 'true'
+        run: |
+          echo "Skipping ${{ matrix.os_name }}-${{ matrix.arch }} because upstream RustFS ${{ steps.upstream.outputs.tag }} has no matching binary."
+          echo "The remaining Windows / Apple Silicon jobs can still publish a release."
+
       - name: Build Tauri application (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.rustfs_asset.outputs.available == 'true'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: cargo tauri build --target ${{ matrix.rust_target }} --bundles app
+        run: cargo tauri build --target ${{ matrix.rust_target }} --bundles app,dmg
 
       - name: Build Tauri application (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.rustfs_asset.outputs.available == 'true'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: cargo tauri build --target ${{ matrix.rust_target }}
+        run: cargo tauri build --target ${{ matrix.rust_target }} --bundles nsis
 
       - name: Prepare and rename artifacts (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.rustfs_asset.outputs.available == 'true'
         env:
           VERSION: ${{ needs.build-check.outputs.version }}
           IS_RELEASE: ${{ needs.build-check.outputs.is_release }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           mkdir -p artifacts
 
@@ -276,7 +321,22 @@ jobs:
           DMG_FILE=$(find src-tauri target -path "*bundle/dmg/*.dmg" -type f -print -quit 2>/dev/null || true)
 
           echo "发现的 .app 目录：${APP_DIR:-无}"
+          echo "发现的 updater 文件：${UPDATER_FILE:-无}"
           echo "发现的 .dmg 文件：${DMG_FILE:-无}"
+          find src-tauri target -path "*bundle/*" -print 2>/dev/null | head -80 || true
+
+          # `--bundles app` used to skip updater archives. If Tauri did not emit
+          # one, build it from the .app so latest.json can still be published.
+          if [ -z "$UPDATER_FILE" ] && [ -n "$APP_DIR" ]; then
+            APP_PARENT="$(dirname "$APP_DIR")"
+            APP_NAME="$(basename "$APP_DIR")"
+            UPDATER_FILE="${APP_PARENT}/${APP_NAME}.tar.gz"
+            echo "ℹ️ Creating updater archive: $UPDATER_FILE"
+            tar -C "$APP_PARENT" -czf "$UPDATER_FILE" "$APP_NAME"
+            if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+              cargo tauri signer sign "$UPDATER_FILE"
+            fi
+          fi
 
           # Copy and rename DMG
           if [ -n "$DMG_FILE" ]; then
@@ -332,7 +392,7 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/artifacts"
 
       - name: Prepare and rename artifacts (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.rustfs_asset.outputs.available == 'true'
         env:
           VERSION: ${{ needs.build-check.outputs.version }}
           IS_RELEASE: ${{ needs.build-check.outputs.is_release }}
@@ -422,6 +482,7 @@ jobs:
           Get-ChildItem -Path artifacts | Format-Table Name, Length -AutoSize
 
       - name: Upload artifacts
+        if: steps.rustfs_asset.outputs.available == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}
@@ -429,7 +490,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to Cloudflare R2
-        if: needs.build-check.outputs.is_release == 'true'
+        if: needs.build-check.outputs.is_release == 'true' && steps.rustfs_asset.outputs.available == 'true'
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -545,39 +606,50 @@ jobs:
           version="${RELEASE_VERSION#v}"
           base_url="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}"
 
-          mac_arm_file=$(find . -maxdepth 1 -name "rustfs-launcher-macos-aarch64-*.app.tar.gz" ! -name "*-latest*" -print -quit)
-          mac_x64_file=$(find . -maxdepth 1 -name "rustfs-launcher-macos-x86_64-*.app.tar.gz" ! -name "*-latest*" -print -quit)
-          win_file=$(find . -maxdepth 1 -name "rustfs-launcher-windows-x86_64-*-setup.exe" ! -name "*-latest*" -print -quit)
-
-          for file in "$mac_arm_file" "$mac_x64_file" "$win_file"; do
-            if [ -z "$file" ] || [ ! -f "$file.sig" ]; then
-              echo "❌ Missing updater artifact or signature: ${file:-unknown}"
-              exit 1
+          platforms="{}"
+          add_platform() {
+            local key="$1"
+            local pattern="$2"
+            local file
+            file=$(find . -maxdepth 1 -name "$pattern" ! -name "*-latest*" -print -quit)
+            if [ -z "$file" ] || [ ! -f "${file}.sig" ]; then
+              echo "ℹ️ Optional updater platform missing: $key (${file:-no file})"
+              return 0
             fi
-          done
+            platforms=$(jq \
+              --arg key "$key" \
+              --arg url "$base_url/$(basename "$file")" \
+              --arg sig "$(cat "${file}.sig")" \
+              '. + {($key): {url: $url, signature: $sig}}' \
+              <<<"$platforms")
+            echo "✅ Added updater platform $key -> $(basename "$file")"
+          }
+
+          add_platform "darwin-aarch64" "rustfs-launcher-macos-aarch64-*.app.tar.gz"
+          add_platform "darwin-x86_64" "rustfs-launcher-macos-x86_64-*.app.tar.gz"
+          add_platform "windows-x86_64" "rustfs-launcher-windows-x86_64-*-setup.exe"
+
+          if ! jq -e 'has("darwin-aarch64") and has("windows-x86_64")' <<<"$platforms" >/dev/null; then
+            echo "❌ Release requires signed updater artifacts for Apple Silicon and Windows"
+            echo "$platforms"
+            exit 1
+          fi
 
           jq -n \
             --arg version "$version" \
             --arg notes "RustFS Launcher ${version}，包含构建时选定的 RustFS 版本。" \
             --arg pub_date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-            --arg mac_arm_url "$base_url/$(basename "$mac_arm_file")" \
-            --arg mac_arm_sig "$(cat "$mac_arm_file.sig")" \
-            --arg mac_x64_url "$base_url/$(basename "$mac_x64_file")" \
-            --arg mac_x64_sig "$(cat "$mac_x64_file.sig")" \
-            --arg win_url "$base_url/$(basename "$win_file")" \
-            --arg win_sig "$(cat "$win_file.sig")" \
+            --argjson platforms "$platforms" \
             '{
               version: $version,
               notes: $notes,
               pub_date: $pub_date,
-              platforms: {
-                "darwin-aarch64": {url: $mac_arm_url, signature: $mac_arm_sig},
-                "darwin-x86_64": {url: $mac_x64_url, signature: $mac_x64_sig},
-                "windows-x86_64": {url: $win_url, signature: $win_sig}
-              }
+              platforms: $platforms
             }' > latest.json
 
           jq empty latest.json
+          echo "📦 latest.json"
+          jq . latest.json
 
       - name: Upload to GitHub Release
         if: needs.build-check.outputs.is_release == 'true'
