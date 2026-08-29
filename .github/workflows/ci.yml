@@ -65,6 +65,7 @@ jobs:
         run: |
           cargo test -p rustfs-launcher --all-features --locked
           cargo test -p rustfs-launcher-ui --locked
+          bash scripts/select-rustfs-asset.sh --self-test
 
   test-native:
     name: Native tests (${{ matrix.os }})
