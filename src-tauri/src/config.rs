@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_API_PORT: u16 = 9000;
+pub const DEFAULT_CONSOLE_PORT: u16 = 9001;
+pub const DEFAULT_HOST: &str = "127.0.0.1";
+pub const DEFAULT_ACCESS_KEY: &str = "rustfsadmin";
+pub const DEFAULT_SECRET_KEY: &str = "rustfsadmin";
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct RustFsConfig {
@@ -23,11 +29,11 @@ impl Default for RustFsConfig {
         Self {
             binary_path: None,
             data_path: String::new(),
-            port: Some(9000),
-            console_port: Some(9001),
-            host: Some("127.0.0.1".to_string()),
-            access_key: Some("rustfsadmin".to_string()),
-            secret_key: Some("rustfsadmin".to_string()),
+            port: Some(DEFAULT_API_PORT),
+            console_port: Some(DEFAULT_CONSOLE_PORT),
+            host: Some(DEFAULT_HOST.to_string()),
+            access_key: Some(DEFAULT_ACCESS_KEY.to_string()),
+            secret_key: Some(DEFAULT_SECRET_KEY.to_string()),
             console_enable: false,
         }
     }
@@ -38,15 +44,15 @@ impl RustFsConfig {
         self.host
             .as_deref()
             .filter(|host| !host.is_empty())
-            .unwrap_or("127.0.0.1")
+            .unwrap_or(DEFAULT_HOST)
     }
 
     pub fn api_port(&self) -> u16 {
-        self.port.unwrap_or(9000)
+        self.port.unwrap_or(DEFAULT_API_PORT)
     }
 
     pub fn console_port(&self) -> u16 {
-        self.console_port.unwrap_or(9001)
+        self.console_port.unwrap_or(DEFAULT_CONSOLE_PORT)
     }
 }
 

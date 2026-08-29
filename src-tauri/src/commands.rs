@@ -1,6 +1,9 @@
+use crate::binaries;
 use crate::config::RustFsConfig;
 use crate::error::{Error, Result};
+use crate::platform;
 use crate::process;
+use crate::rustfs_update::{self, RustFsUpdateInfo};
 use crate::state::{self, add_app_log};
 use serde::Serialize;
 use std::io::Error as IoError;
@@ -20,6 +23,9 @@ pub struct CommandResponse {
 pub struct AppVersionInfo {
     pub launcher_version: String,
     pub rustfs_version: String,
+    pub bundled_rustfs_version: Option<String>,
+    pub rustfs_managed: bool,
+    pub platform: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -148,15 +154,16 @@ pub async fn get_runtime_status(host: String, port: u16) -> Result<RuntimeStatus
 
 #[tauri::command]
 pub fn get_app_version_info(app: AppHandle) -> AppVersionInfo {
+    let effective = binaries::effective_version();
     AppVersionInfo {
         launcher_version: app.package_info().version.to_string(),
-        rustfs_version: option_env!("RUSTFS_VERSION")
-            .unwrap_or("unknown")
-            .to_string(),
+        rustfs_version: effective.version,
+        bundled_rustfs_version: binaries::bundled_version().map(str::to_string),
+        rustfs_managed: effective.managed,
+        platform: platform::current_label(),
     }
 }
 
-#[tauri::command]
 fn is_http_url(url: &str) -> bool {
     let scheme_ok = url.starts_with("http://") || url.starts_with("https://");
     scheme_ok && !url.chars().any(|ch| ch.is_control() || ch.is_whitespace())
@@ -183,28 +190,45 @@ pub async fn check_for_update(app: AppHandle) -> Result<UpdateInfo> {
     let current_version = app.package_info().version.to_string();
     let update = app
         .updater()
-        .map_err(|error| Error::Update(error.to_string()))?
+        .map_err(|error| {
+            add_app_log(format!("Launcher update check failed: {error}"));
+            Error::Update(error.to_string())
+        })?
         .check()
         .await
-        .map_err(|error| Error::Update(error.to_string()))?;
+        .map_err(|error| {
+            add_app_log(format!("Launcher update check failed: {error}"));
+            Error::Update(error.to_string())
+        })?;
 
     Ok(match update {
-        Some(update) => UpdateInfo {
-            available: true,
-            current_version,
-            version: Some(update.version),
-            notes: update.body,
-            date: update.date.map(|date| date.to_string()),
-            rustfs_running: state::is_rustfs_process_running(),
-        },
-        None => UpdateInfo {
-            available: false,
-            current_version,
-            version: None,
-            notes: None,
-            date: None,
-            rustfs_running: state::is_rustfs_process_running(),
-        },
+        Some(update) => {
+            add_app_log(format!(
+                "Launcher update available: {current_version} -> {}",
+                update.version
+            ));
+            UpdateInfo {
+                available: true,
+                current_version,
+                version: Some(update.version),
+                notes: update.body,
+                date: update.date.map(|date| date.to_string()),
+                rustfs_running: state::is_rustfs_process_running(),
+            }
+        }
+        None => {
+            add_app_log(format!(
+                "Launcher {current_version} is already the latest release"
+            ));
+            UpdateInfo {
+                available: false,
+                current_version,
+                version: None,
+                notes: None,
+                date: None,
+                rustfs_running: state::is_rustfs_process_running(),
+            }
+        }
     })
 }
 
@@ -255,6 +279,26 @@ pub async fn install_update(app: AppHandle) -> Result<CommandResponse> {
 
     add_app_log("Update installed; restarting launcher".to_string());
     app.restart();
+}
+
+/// Checks <https://version.rustfs.com/latest.json> for a newer RustFS build.
+/// This is independent of the launcher's own self-update.
+#[tauri::command]
+pub async fn check_rustfs_update() -> Result<RustFsUpdateInfo> {
+    rustfs_update::check().await
+}
+
+/// Downloads, verifies, and installs the latest RustFS build for this platform.
+#[tauri::command]
+pub async fn install_rustfs_update() -> Result<CommandResponse> {
+    let message = rustfs_update::install().await.inspect_err(|error| {
+        add_app_log(format!("RustFS update failed: {error}"));
+    })?;
+
+    Ok(CommandResponse {
+        success: true,
+        message,
+    })
 }
 
 #[cfg(test)]

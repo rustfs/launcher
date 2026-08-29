@@ -20,7 +20,7 @@ pub fn Toast(
     #[prop(into)] remove_toast: Callback<u64>,
 ) -> impl IntoView {
     view! {
-        <div class="toast-container">
+        <div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
             <For
                 each=move || toasts.get()
                 key=|toast| toast.id
@@ -45,7 +45,11 @@ pub fn Toast(
                         }}
                     </span>
                     <span class="toast-text">{toast.message}</span>
-                    <button class="toast-close" on:click=move |_| remove_toast.run(toast.id)>
+                    <button
+                        class="toast-close"
+                        aria-label="Dismiss notification"
+                        on:click=move |_| remove_toast.run(toast.id)
+                    >
                         "×"
                     </button>
                 </div>

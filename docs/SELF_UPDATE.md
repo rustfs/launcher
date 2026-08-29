@@ -1,7 +1,11 @@
 # 自升级发布说明
 
-RustFS Launcher 使用 Tauri 2 Updater 进行整包升级。更新包同时包含 Launcher
-和对应平台的 RustFS 二进制文件。
+RustFS Launcher 支持两条独立的升级路径，均面向 **Windows 和 macOS**：
+
+- **Launcher 整包升级**：Tauri 2 Updater，更新包同时包含 Launcher 和对应平台的 RustFS 二进制。
+- **RustFS 二进制升级**：用户可在启动器内手动检查并安装上游 `rustfs/rustfs` 的新版本，无需重装启动器。
+
+Linux 不是发布目标。启动器在 Linux 上会拒绝解析平台二进制，并提示仅支持 Windows 与 macOS。
 
 ## 版本约定
 
@@ -51,10 +55,25 @@ https://github.com/rustfs/launcher/releases/latest/download/latest.json
 
 ## 用户侧行为
 
-- 用户点击“检查更新”后，Launcher 请求并验证更新清单。
+启动时会静默检查一次更新；用户也可随时点击“Check for Updates”。检查会同时请求：
+
+- Launcher 更新清单（签名校验）
+- 上游 `https://version.rustfs.com/latest.json`（RustFS 版本）
+
+### Launcher 整包
+
 - 如果由 Launcher 管理的 RustFS 正在运行，安装前会请求用户确认。
 - 用户确认后 RustFS 被停止，更新包下载并通过签名校验，然后安装。
 - 安装成功后 Launcher 自动重启；RustFS 不会自动恢复运行。
+
+### RustFS 二进制
+
+- 仅下载当前平台的上游 zip（macOS aarch64 / macOS x86_64 / Windows x86_64）。
+- 检查更新时会读取同一 Release 的 `SHA256SUMS`。若最新版本没有该平台的资源，界面显示原因而不是“可更新”。
+- 用同一 Release 中的 `SHA256SUMS` 校验压缩包。
+- 解压后对二进制执行 `--version`；失败则中止，不覆盖现有文件。
+- 安装到启动器数据目录下的 `binaries/`，并写入 `installed.json`。
+- 若启动器随后通过整包升级内置了更新的 RustFS，内置版本优先。
 
 用户的数据目录和保存在 WebView 本地存储中的 Launcher 配置不属于应用安装
 包，正常覆盖升级不会主动删除它们。
@@ -66,6 +85,7 @@ cargo fmt --all -- --check
 cargo check -p rustfs-launcher-ui --target wasm32-unknown-unknown
 cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
 cargo test -p rustfs-launcher --all-features
+cargo test -p rustfs-launcher-ui
 ```
 
 正式对外发布前，还应配置 Apple Developer ID 签名与公证，以及 Windows

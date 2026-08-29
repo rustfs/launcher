@@ -1,4 +1,4 @@
-use crate::types::RustFsConfig;
+use crate::types::{RustFsConfig, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use serde_json;
@@ -17,8 +17,6 @@ extern "C" {
 const API_PORT_ERROR_MESSAGE: &str = "API port must be a number between 1 and 65535";
 const CONSOLE_PORT_ERROR_MESSAGE: &str = "Console port must be a number between 1 and 65535";
 const PORT_CONFLICT_ERROR_MESSAGE: &str = "API port and console port must be different";
-const DEFAULT_API_PORT: u16 = 9000;
-const DEFAULT_CONSOLE_PORT: u16 = 9001;
 
 fn extract_dropped_paths(payload: &JsValue) -> Vec<String> {
     if let Ok(paths) = js_sys::Reflect::get(payload, &"paths".into()) {
@@ -440,7 +438,7 @@ pub fn ConfigForm(
                                         let current = config.get();
                                         format!(
                                             "{}:{}",
-                                            current.host.unwrap_or_else(|| "127.0.0.1".to_string()),
+                                            current.host.unwrap_or_else(|| DEFAULT_HOST.to_string()),
                                             current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT)
                                         )
                                     }}
@@ -491,6 +489,14 @@ pub fn ConfigForm(
                                     type="button"
                                     class="toggle-visibility"
                                     disabled=move || is_running.get()
+                                    aria-pressed=move || show_secret.get()
+                                    aria-label=move || {
+                                        if show_secret.get() {
+                                            "Hide secret key"
+                                        } else {
+                                            "Show secret key"
+                                        }
+                                    }
                                     on:click=move |_| {
                                         if !is_running.get() {
                                             set_show_secret.update(|show| *show = !*show);

@@ -154,11 +154,17 @@ Clear 会清空两个页签。
 | 服务端日志 | 数据文件夹同级的 `logs` 文件夹 |
 | 启动器的设置 | 由程序自己保存，没有需要手动编辑的文件 |
 | 程序本体 | Windows 在 `%LOCALAPPDATA%\RustFS Launcher`，macOS 在 `/Applications` |
+| 手动升级后的 RustFS 二进制 | Windows：`%APPDATA%\com.dandan.rustfs-launcher\binaries`；macOS：`~/Library/Application Support/com.dandan.rustfs-launcher/binaries` |
 
 ## 升级
 
-在 Version & Updates 卡片里点 **Check for Updates**。如果有新版本，启动器会下载、校验签名并安装。若 RustFS
-正在运行，它会先征求你的同意，停掉服务后再重启自己。升级会整体替换程序，包括内置的 RustFS 服务端。
+Version & Updates 卡片负责 **两类互相独立的升级**，都通过 **Check for Updates** 触发（仅 Windows 和 macOS）：
+
+1. **Launcher** — 带签名的整包升级，会替换启动器以及内置的 RustFS，然后重启程序。
+2. **RustFS** — 只更新服务端二进制。启动器从上游发布源下载对应平台的压缩包，用 `SHA256SUMS` 校验，再做一次
+   `--version` 冒烟测试，最后写入启动器数据目录。不必为了新的 RustFS 去重装启动器。
+
+若 RustFS 正在运行，升级前会征求确认并先停掉服务。升级完成后不会自动再把它拉起来。
 
 签名与发布的细节见 [docs/SELF_UPDATE.md](docs/SELF_UPDATE.md)。
 

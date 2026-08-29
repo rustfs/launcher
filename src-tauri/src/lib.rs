@@ -1,8 +1,12 @@
+mod binaries;
 mod commands;
 mod config;
 mod error;
+mod platform;
 mod process;
+mod rustfs_update;
 mod state;
+mod version;
 
 use state::{add_app_log, set_app_handle, terminate_rustfs_process};
 use tauri::{
@@ -26,10 +30,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(
             |app, _arguments, _cwd| {
@@ -40,12 +42,24 @@ pub fn run() {
             set_app_handle(app.handle().clone());
             add_app_log("RustFS Launcher started".to_string());
 
+            add_app_log(format!("Detected platform: {}", platform::current_label()));
+            if let Err(error) = platform::Platform::detect() {
+                add_app_log(format!("WARNING: {error}"));
+            }
+
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::with_id("rustfs-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray = TrayIconBuilder::with_id("rustfs-tray");
+            match app.default_window_icon() {
+                Some(icon) => tray = tray.icon(icon.clone()),
+                // A tray entry without an icon still works and is far better
+                // than refusing to start the launcher.
+                None => log::warn!("No default window icon; tray icon will use the system default"),
+            }
+
+            let _tray = tray
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -103,7 +117,9 @@ pub fn run() {
             commands::get_app_version_info,
             commands::open_service_url,
             commands::check_for_update,
-            commands::install_update
+            commands::install_update,
+            commands::check_rustfs_update,
+            commands::install_rustfs_update
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

@@ -1,3 +1,4 @@
+use crate::binaries;
 use crate::config::RustFsConfig;
 use crate::error::{Error, Result};
 use crate::state::{
@@ -12,27 +13,6 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 const EARLY_EXIT_WAIT: Duration = Duration::from_millis(400);
-
-pub(crate) fn inferred_binary_name_for(os: &str, arch: &str) -> &'static str {
-    match (os, arch) {
-        ("macos", "aarch64") => "rustfs-macos-aarch64",
-        ("macos", "x86_64") => "rustfs-macos-x86_64",
-        ("windows", "x86_64") | ("windows", "aarch64") => "rustfs-windows-x86_64.exe",
-        ("linux", "x86_64") => "rustfs-linux-x86_64",
-        ("linux", "aarch64") => "rustfs-linux-aarch64",
-        _ => {
-            if os == "windows" {
-                "rustfs-windows-x86_64.exe"
-            } else {
-                "rustfs"
-            }
-        }
-    }
-}
-
-fn inferred_binary_name() -> &'static str {
-    inferred_binary_name_for(std::env::consts::OS, std::env::consts::ARCH)
-}
 
 pub(crate) fn format_bind_address(host: &str, port: u16) -> String {
     if host.contains(':') && !host.starts_with('[') {
@@ -144,27 +124,19 @@ fn resource_dir_from_app() -> Option<PathBuf> {
         .and_then(|app| app.path().resource_dir().ok())
 }
 
-fn get_binary_path() -> Result<PathBuf> {
-    let current_exe = std::env::current_exe().map_err(Error::Io)?;
-    let exe_dir = current_exe.parent().ok_or_else(|| {
-        Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Parent directory of executable not found",
-        ))
-    })?;
-    let binary_name = inferred_binary_name();
-    let env_dir = std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from);
-    let cwd = std::env::current_dir().ok();
-    let resource_dir = resource_dir_from_app();
+pub(crate) fn resolve_runtime_binary(
+    installed: Option<PathBuf>,
+    exe_dir: &Path,
+    cwd: Option<&Path>,
+    env_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+    binary_name: &str,
+) -> Result<PathBuf> {
+    if let Some(path) = installed.filter(|path| path.is_file()) {
+        return Ok(path);
+    }
 
-    let candidates = binary_candidates(
-        exe_dir,
-        cwd.as_deref(),
-        env_dir.as_deref(),
-        resource_dir.as_deref(),
-        binary_name,
-    );
-
+    let candidates = binary_candidates(exe_dir, cwd, env_dir, resource_dir, binary_name);
     for candidate in &candidates {
         add_app_log(format!(
             "Checking RustFS binary candidate: {}",
@@ -189,7 +161,41 @@ fn get_binary_path() -> Result<PathBuf> {
     ))
 }
 
-fn apply_no_window(cmd: &mut Command) {
+fn get_binary_path() -> Result<PathBuf> {
+    // A binary installed through the in-app RustFS update wins over the copy
+    // bundled with the launcher, as long as it is not the older of the two.
+    let installed = binaries::installed_binary().map(|(path, record)| {
+        add_app_log(format!(
+            "Using RustFS {} installed by the launcher at {}",
+            record.version,
+            path.display()
+        ));
+        path
+    });
+
+    let current_exe = std::env::current_exe().map_err(Error::Io)?;
+    let exe_dir = current_exe.parent().ok_or_else(|| {
+        Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Parent directory of executable not found",
+        ))
+    })?;
+    let binary_name = binaries::binary_name()?;
+    let env_dir = std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from);
+    let cwd = std::env::current_dir().ok();
+    let resource_dir = resource_dir_from_app();
+
+    resolve_runtime_binary(
+        installed,
+        exe_dir,
+        cwd.as_deref(),
+        env_dir.as_deref(),
+        resource_dir.as_deref(),
+        binary_name,
+    )
+}
+
+pub(crate) fn apply_no_window(cmd: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -448,26 +454,6 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn infers_platform_binary_names() {
-        assert_eq!(
-            inferred_binary_name_for("macos", "aarch64"),
-            "rustfs-macos-aarch64"
-        );
-        assert_eq!(
-            inferred_binary_name_for("macos", "x86_64"),
-            "rustfs-macos-x86_64"
-        );
-        assert_eq!(
-            inferred_binary_name_for("windows", "x86_64"),
-            "rustfs-windows-x86_64.exe"
-        );
-        assert_eq!(
-            inferred_binary_name_for("windows", "aarch64"),
-            "rustfs-windows-x86_64.exe"
-        );
-    }
-
-    #[test]
     fn wraps_ipv6_bind_addresses() {
         assert_eq!(format_bind_address("127.0.0.1", 9000), "127.0.0.1:9000");
         assert_eq!(format_bind_address("::1", 9000), "[::1]:9000");
@@ -533,6 +519,55 @@ mod tests {
             || path
                 .to_string_lossy()
                 .contains("resources/binaries/rustfs-windows-x86_64.exe")));
+    }
+
+    #[test]
+    fn resolve_runtime_binary_prefers_an_installed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = dir.path().join("installed");
+        let bundled = dir.path().join("binaries").join("rustfs-macos-aarch64");
+        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        std::fs::write(&installed, b"new").unwrap();
+        std::fs::write(&bundled, b"old").unwrap();
+
+        let resolved = resolve_runtime_binary(
+            Some(installed.clone()),
+            dir.path(),
+            None,
+            None,
+            None,
+            "rustfs-macos-aarch64",
+        )
+        .unwrap();
+        assert_eq!(resolved, installed);
+
+        let missing_install = dir.path().join("gone");
+        let fallback = resolve_runtime_binary(
+            Some(missing_install),
+            dir.path(),
+            None,
+            None,
+            None,
+            "rustfs-macos-aarch64",
+        )
+        .unwrap();
+        assert_eq!(fallback, bundled);
+    }
+
+    #[test]
+    fn resolve_runtime_binary_reports_the_first_candidate_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = resolve_runtime_binary(
+            None,
+            dir.path(),
+            None,
+            None,
+            None,
+            "rustfs-windows-x86_64.exe",
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::BinaryNotFound(_)));
+        assert!(error.to_string().contains("rustfs-windows-x86_64.exe"));
     }
 
     #[test]

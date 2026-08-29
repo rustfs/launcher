@@ -43,6 +43,25 @@ pub enum Error {
 
     #[error("Update failed: {0}")]
     Update(String),
+
+    #[error("RustFS Launcher supports Windows and macOS only (detected {0})")]
+    UnsupportedPlatform(String),
+
+    #[error("Network request failed: {0}")]
+    Network(String),
+
+    #[error("Release asset not found: {0}")]
+    AssetNotFound(String),
+
+    #[error("Checksum mismatch for {asset}: expected {expected}, got {actual}")]
+    ChecksumMismatch {
+        asset: String,
+        expected: String,
+        actual: String,
+    },
+
+    #[error("RustFS update failed: {0}")]
+    RustFsUpdate(String),
 }
 
 impl Serialize for Error {
@@ -55,3 +74,38 @@ impl Serialize for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn serializes_as_the_display_string_for_the_frontend() {
+        let error = Error::PortInUse(9000);
+        assert_eq!(
+            serde_json::to_string(&error).unwrap(),
+            "\"Port 9000 is already in use\""
+        );
+    }
+
+    #[test]
+    fn unsupported_platform_names_the_supported_targets() {
+        let message = Error::UnsupportedPlatform("linux-x86_64".to_string()).to_string();
+        assert!(message.contains("Windows"));
+        assert!(message.contains("macOS"));
+        assert!(message.contains("linux-x86_64"));
+    }
+
+    #[test]
+    fn checksum_mismatch_reports_both_digests() {
+        let message = Error::ChecksumMismatch {
+            asset: "rustfs-windows-x86_64-v1.0.0.zip".to_string(),
+            expected: "aaa".to_string(),
+            actual: "bbb".to_string(),
+        }
+        .to_string();
+        assert!(message.contains("rustfs-windows-x86_64-v1.0.0.zip"));
+        assert!(message.contains("aaa"));
+        assert!(message.contains("bbb"));
+    }
+}
