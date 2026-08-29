@@ -1,6 +1,7 @@
 use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
+use crate::helpers::{display_host, progress_percent, rustfs_idle_message, rustfs_source_label};
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
     RustFsUpdateInfo, UpdateInfo, APP_LOG_CAPACITY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT,
@@ -37,15 +38,6 @@ fn js_error_message(err: JsValue) -> String {
     }
 
     format!("{err:?}")
-}
-
-fn display_host(host: Option<&str>) -> String {
-    match host.map(str::trim).filter(|value| !value.is_empty()) {
-        Some("0.0.0.0") | Some("*") | None => DEFAULT_HOST.to_string(),
-        Some("::") | Some("[::]") => "[::1]".to_string(),
-        Some(host) if host.contains(':') && !host.starts_with('[') => format!("[{host}]"),
-        Some(host) => host.to_string(),
-    }
 }
 
 // Helper function to check if we're in Tauri environment
@@ -89,9 +81,10 @@ fn apply_progress_payload(payload: &JsValue, set_progress: WriteSignal<Option<u3
         Some("progress") => {
             let downloaded = js_f64(payload, &["downloaded"]);
             if let Some(downloaded) = downloaded {
-                let percent = js_f64(payload, &["content_length", "contentLength"])
-                    .filter(|total| *total > 0.0)
-                    .map(|total| ((downloaded / total) * 100.0).min(99.0) as u32);
+                let percent = progress_percent(
+                    downloaded,
+                    js_f64(payload, &["content_length", "contentLength"]),
+                );
                 if percent.is_some() {
                     set_progress.set(percent);
                 }
@@ -1009,13 +1002,10 @@ pub fn App() -> impl IntoView {
                                 .as_ref()
                                 .map(|info| info.rustfs_version.as_str())
                                 .unwrap_or("—");
-                            let source = info.as_ref().map(|info| {
-                                if info.rustfs_managed {
-                                    "installed"
-                                } else {
-                                    "bundled"
-                                }
-                            }).unwrap_or("bundled");
+                            let source = info
+                                .as_ref()
+                                .map(|info| rustfs_source_label(info.rustfs_managed))
+                                .unwrap_or("bundled");
                             format!("RustFS {version} ({source})")
                         }}</span>
                     </div>
@@ -1071,7 +1061,7 @@ pub fn App() -> impl IntoView {
                                 </div>
                             }.into_any()
                         } else {
-                            view! { <p class="update-current">"RustFS is up to date."</p> }.into_any()
+                            view! { <p class="update-current">{rustfs_idle_message(info.notes.as_deref())}</p> }.into_any()
                         }
                     })}
 

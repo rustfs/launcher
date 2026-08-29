@@ -62,7 +62,9 @@ jobs:
         run: trunk build
 
       - name: Run tests
-        run: cargo test -p rustfs-launcher --all-features --locked
+        run: |
+          cargo test -p rustfs-launcher --all-features --locked
+          cargo test -p rustfs-launcher-ui --locked
 
   test-native:
     name: Native tests (${{ matrix.os }})

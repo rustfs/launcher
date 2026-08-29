@@ -124,38 +124,19 @@ fn resource_dir_from_app() -> Option<PathBuf> {
         .and_then(|app| app.path().resource_dir().ok())
 }
 
-fn get_binary_path() -> Result<PathBuf> {
-    // A binary installed through the in-app RustFS update wins over the copy
-    // bundled with the launcher, as long as it is not the older of the two.
-    if let Some((path, record)) = binaries::installed_binary() {
-        add_app_log(format!(
-            "Using RustFS {} installed by the launcher at {}",
-            record.version,
-            path.display()
-        ));
+pub(crate) fn resolve_runtime_binary(
+    installed: Option<PathBuf>,
+    exe_dir: &Path,
+    cwd: Option<&Path>,
+    env_dir: Option<&Path>,
+    resource_dir: Option<&Path>,
+    binary_name: &str,
+) -> Result<PathBuf> {
+    if let Some(path) = installed.filter(|path| path.is_file()) {
         return Ok(path);
     }
 
-    let current_exe = std::env::current_exe().map_err(Error::Io)?;
-    let exe_dir = current_exe.parent().ok_or_else(|| {
-        Error::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Parent directory of executable not found",
-        ))
-    })?;
-    let binary_name = binaries::binary_name()?;
-    let env_dir = std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from);
-    let cwd = std::env::current_dir().ok();
-    let resource_dir = resource_dir_from_app();
-
-    let candidates = binary_candidates(
-        exe_dir,
-        cwd.as_deref(),
-        env_dir.as_deref(),
-        resource_dir.as_deref(),
-        binary_name,
-    );
-
+    let candidates = binary_candidates(exe_dir, cwd, env_dir, resource_dir, binary_name);
     for candidate in &candidates {
         add_app_log(format!(
             "Checking RustFS binary candidate: {}",
@@ -178,6 +159,40 @@ fn get_binary_path() -> Result<PathBuf> {
             .map(|path| path.to_string_lossy().to_string())
             .unwrap_or_else(|| "<unknown>".to_string()),
     ))
+}
+
+fn get_binary_path() -> Result<PathBuf> {
+    // A binary installed through the in-app RustFS update wins over the copy
+    // bundled with the launcher, as long as it is not the older of the two.
+    let installed = binaries::installed_binary().map(|(path, record)| {
+        add_app_log(format!(
+            "Using RustFS {} installed by the launcher at {}",
+            record.version,
+            path.display()
+        ));
+        path
+    });
+
+    let current_exe = std::env::current_exe().map_err(Error::Io)?;
+    let exe_dir = current_exe.parent().ok_or_else(|| {
+        Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Parent directory of executable not found",
+        ))
+    })?;
+    let binary_name = binaries::binary_name()?;
+    let env_dir = std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from);
+    let cwd = std::env::current_dir().ok();
+    let resource_dir = resource_dir_from_app();
+
+    resolve_runtime_binary(
+        installed,
+        exe_dir,
+        cwd.as_deref(),
+        env_dir.as_deref(),
+        resource_dir.as_deref(),
+        binary_name,
+    )
 }
 
 pub(crate) fn apply_no_window(cmd: &mut Command) {
@@ -504,6 +519,55 @@ mod tests {
             || path
                 .to_string_lossy()
                 .contains("resources/binaries/rustfs-windows-x86_64.exe")));
+    }
+
+    #[test]
+    fn resolve_runtime_binary_prefers_an_installed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = dir.path().join("installed");
+        let bundled = dir.path().join("binaries").join("rustfs-macos-aarch64");
+        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        std::fs::write(&installed, b"new").unwrap();
+        std::fs::write(&bundled, b"old").unwrap();
+
+        let resolved = resolve_runtime_binary(
+            Some(installed.clone()),
+            dir.path(),
+            None,
+            None,
+            None,
+            "rustfs-macos-aarch64",
+        )
+        .unwrap();
+        assert_eq!(resolved, installed);
+
+        let missing_install = dir.path().join("gone");
+        let fallback = resolve_runtime_binary(
+            Some(missing_install),
+            dir.path(),
+            None,
+            None,
+            None,
+            "rustfs-macos-aarch64",
+        )
+        .unwrap();
+        assert_eq!(fallback, bundled);
+    }
+
+    #[test]
+    fn resolve_runtime_binary_reports_the_first_candidate_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = resolve_runtime_binary(
+            None,
+            dir.path(),
+            None,
+            None,
+            None,
+            "rustfs-windows-x86_64.exe",
+        )
+        .unwrap_err();
+        assert!(matches!(error, Error::BinaryNotFound(_)));
+        assert!(error.to_string().contains("rustfs-windows-x86_64.exe"));
     }
 
     #[test]

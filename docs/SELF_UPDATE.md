@@ -69,6 +69,7 @@ https://github.com/rustfs/launcher/releases/latest/download/latest.json
 ### RustFS 二进制
 
 - 仅下载当前平台的上游 zip（macOS aarch64 / macOS x86_64 / Windows x86_64）。
+- 检查更新时会读取同一 Release 的 `SHA256SUMS`。若最新版本没有该平台的资源，界面显示原因而不是“可更新”。
 - 用同一 Release 中的 `SHA256SUMS` 校验压缩包。
 - 解压后对二进制执行 `--version`；失败则中止，不覆盖现有文件。
 - 安装到启动器数据目录下的 `binaries/`，并写入 `installed.json`。
@@ -84,6 +85,7 @@ cargo fmt --all -- --check
 cargo check -p rustfs-launcher-ui --target wasm32-unknown-unknown
 cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
 cargo test -p rustfs-launcher --all-features
+cargo test -p rustfs-launcher-ui
 ```
 
 正式对外发布前，还应配置 Apple Developer ID 签名与公证，以及 Windows

@@ -93,6 +93,7 @@ check-test:
 	@echo "🧪 Running tests..."
 	@echo "=========================================="
 	@cargo test -p rustfs-launcher --all-features
+	@cargo test -p rustfs-launcher-ui
 	@echo "✅ All tests passed!"
 	@echo ""
 

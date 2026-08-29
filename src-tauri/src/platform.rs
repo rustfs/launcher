@@ -108,6 +108,22 @@ mod tests {
     }
 
     #[test]
+    fn detect_accepts_only_shipped_desktop_targets() {
+        let detected = Platform::detect();
+        match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("macos", "aarch64" | "x86_64") | ("windows", "x86_64" | "aarch64") => {
+                assert!(detected.is_ok());
+            }
+            _ => {
+                let error = detected.unwrap_err();
+                assert!(matches!(error, Error::UnsupportedPlatform(_)));
+                assert!(error.to_string().contains("Windows"));
+                assert!(error.to_string().contains("macOS"));
+            }
+        }
+    }
+
+    #[test]
     fn asset_slug_drops_the_windows_extension() {
         assert_eq!(
             Platform::from_target("windows", "x86_64")

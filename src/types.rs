@@ -89,6 +89,8 @@ pub struct RustFsUpdateInfo {
     pub release_type: Option<String>,
     pub release_url: Option<String>,
     pub asset_name: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
     pub platform: String,
     pub rustfs_running: bool,
 }

@@ -56,20 +56,29 @@ pub fn read_record_from(dir: &Path) -> Option<InstalledRecord> {
 pub fn write_record(dir: &Path, record: &InstalledRecord) -> Result<()> {
     let contents = serde_json::to_string_pretty(record)
         .map_err(|error| Error::RustFsUpdate(error.to_string()))?;
-    std::fs::write(dir.join(RECORD_FILE), contents).map_err(Error::Io)
+    let dest = dir.join(RECORD_FILE);
+    let tmp = dir.join(format!("{RECORD_FILE}.tmp"));
+    std::fs::write(&tmp, contents).map_err(Error::Io)?;
+    std::fs::rename(&tmp, dest).map_err(Error::Io)
 }
 
 /// User-installed binary to run, when it exists and is not older than the
 /// bundled copy.
-pub fn installed_binary() -> Option<(PathBuf, InstalledRecord)> {
-    let dir = managed_dir()?;
-    let record = read_record_from(&dir)?;
-    if !version::prefer_installed(&record.version, bundled_version()) {
+pub fn installed_binary_from(
+    dir: &Path,
+    bundled: Option<&str>,
+) -> Option<(PathBuf, InstalledRecord)> {
+    let record = read_record_from(dir)?;
+    if !version::prefer_installed(&record.version, bundled) {
         return None;
     }
 
     let path = dir.join(&record.binary);
     path.is_file().then_some((path, record))
+}
+
+pub fn installed_binary() -> Option<(PathBuf, InstalledRecord)> {
+    installed_binary_from(&managed_dir()?, bundled_version())
 }
 
 /// Version of RustFS the launcher will actually start.
@@ -79,17 +88,21 @@ pub struct EffectiveVersion {
     pub managed: bool,
 }
 
-pub fn effective_version() -> EffectiveVersion {
-    match installed_binary() {
+pub fn effective_version_from(dir: Option<&Path>, bundled: Option<&str>) -> EffectiveVersion {
+    match dir.and_then(|dir| installed_binary_from(dir, bundled)) {
         Some((_, record)) => EffectiveVersion {
             version: record.version,
             managed: true,
         },
         None => EffectiveVersion {
-            version: bundled_version().unwrap_or("unknown").to_string(),
+            version: bundled.unwrap_or("unknown").to_string(),
             managed: false,
         },
     }
+}
+
+pub fn effective_version() -> EffectiveVersion {
+    effective_version_from(managed_dir().as_deref(), bundled_version())
 }
 
 /// File name the platform expects, e.g. `rustfs-windows-x86_64.exe`.
@@ -99,7 +112,20 @@ pub fn binary_name() -> Result<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_record_from, write_record, InstalledRecord};
+    use super::{
+        effective_version_from, installed_binary_from, read_record_from, write_record,
+        InstalledRecord,
+    };
+
+    fn sample_record(version: &str, binary: &str) -> InstalledRecord {
+        InstalledRecord {
+            version: version.to_string(),
+            binary: binary.to_string(),
+            asset: format!("{binary}-v{version}.zip"),
+            sha256: "6c6a0e84".to_string(),
+            installed_at: "2026-08-28T00:00:00Z".to_string(),
+        }
+    }
 
     #[test]
     fn record_round_trips_through_the_managed_dir() {
@@ -127,5 +153,52 @@ mod tests {
 
         std::fs::write(dir.path().join("installed.json"), "not json").unwrap();
         assert!(read_record_from(dir.path()).is_none());
+    }
+
+    #[test]
+    fn installed_binary_requires_the_file_and_a_new_enough_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = sample_record("1.0.0-rc.4", "rustfs-macos-aarch64");
+        write_record(dir.path(), &record).unwrap();
+
+        assert!(
+            installed_binary_from(dir.path(), Some("1.0.0-rc.3")).is_none(),
+            "record without the binary file must be ignored"
+        );
+
+        std::fs::write(dir.path().join(&record.binary), b"stub").unwrap();
+        let (path, loaded) =
+            installed_binary_from(dir.path(), Some("1.0.0-rc.3")).expect("newer install wins");
+        assert_eq!(loaded.version, "1.0.0-rc.4");
+        assert_eq!(path.file_name().unwrap(), "rustfs-macos-aarch64");
+
+        assert!(
+            installed_binary_from(dir.path(), Some("1.0.0-rc.5")).is_none(),
+            "an older install must not shadow a newer bundle"
+        );
+        assert!(installed_binary_from(dir.path(), None).is_some());
+    }
+
+    #[test]
+    fn effective_version_prefers_the_install_that_will_actually_run() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            effective_version_from(None, Some("1.0.0-rc.3")).version,
+            "1.0.0-rc.3"
+        );
+        assert!(!effective_version_from(None, Some("1.0.0-rc.3")).managed);
+        assert_eq!(effective_version_from(None, None).version, "unknown");
+
+        let record = sample_record("1.0.0-rc.4", "rustfs-windows-x86_64.exe");
+        write_record(dir.path(), &record).unwrap();
+        std::fs::write(dir.path().join(&record.binary), b"stub").unwrap();
+
+        let managed = effective_version_from(Some(dir.path()), Some("1.0.0-rc.3"));
+        assert_eq!(managed.version, "1.0.0-rc.4");
+        assert!(managed.managed);
+
+        let bundled = effective_version_from(Some(dir.path()), Some("1.0.0"));
+        assert_eq!(bundled.version, "1.0.0");
+        assert!(!bundled.managed);
     }
 }
