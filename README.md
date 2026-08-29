@@ -168,12 +168,21 @@ files instead, so this tab is often quiet. Auto-scroll follows new lines; Clear 
 | Server logs | A `logs` folder next to the data folder |
 | Launcher settings | Stored by the app itself; no file for you to edit |
 | The app | `%LOCALAPPDATA%\RustFS Launcher` on Windows, `/Applications` on macOS |
+| Updated RustFS binary | App data: `%APPDATA%\com.dandan.rustfs-launcher\binaries` on Windows, `~/Library/Application Support/com.dandan.rustfs-launcher/binaries` on macOS |
 
 ## Updating
 
-Press **Check for Updates** in the Version & Updates card. If a newer release exists, the launcher downloads
-it, verifies its signature, and installs it. If RustFS is running, the launcher asks first, then stops the
-server before restarting itself. Updates replace the whole app, including the bundled RustFS server.
+The Version & Updates card covers **two independent updates**, both started by **Check for Updates**
+(Windows and macOS only):
+
+1. **Launcher** — a signed whole-app update. This replaces the launcher and the bundled RustFS, then restarts
+   the app.
+2. **RustFS** — a verified binary-only update from the upstream RustFS release feed. The archive is checked
+   against `SHA256SUMS`, smoke-tested, and installed into the launcher data directory. You do not need a new
+   launcher installer just to pick up a newer RustFS.
+
+If RustFS is running, the launcher asks before stopping it. RustFS is not started again automatically after
+either update.
 
 The signing and release mechanics are documented in [docs/SELF_UPDATE.md](docs/SELF_UPDATE.md).
 

@@ -88,8 +88,9 @@ case "$OS" in
         esac
         ;;
     "Linux")
-        echo "✗ Error: Linux platform not supported yet"
-        echo "Please download the appropriate binary manually to $BINARIES_DIR/"
+        echo "✗ Error: Linux is not a supported launcher target"
+        echo "RustFS Launcher ships Windows and macOS installers only."
+        echo "On Linux, run the RustFS binary from https://github.com/rustfs/rustfs/releases"
         exit 1
         ;;
     *)

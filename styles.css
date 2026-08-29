@@ -259,9 +259,18 @@ button.summary-card.clickable:hover {
 
 .version-row {
   justify-content: flex-start;
+  flex-wrap: wrap;
   margin-top: 12px;
   color: var(--text-muted);
   font-size: 0.78rem;
+}
+
+.update-platform {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .update-check-btn,

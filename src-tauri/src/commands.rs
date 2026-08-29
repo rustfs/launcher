@@ -190,28 +190,45 @@ pub async fn check_for_update(app: AppHandle) -> Result<UpdateInfo> {
     let current_version = app.package_info().version.to_string();
     let update = app
         .updater()
-        .map_err(|error| Error::Update(error.to_string()))?
+        .map_err(|error| {
+            add_app_log(format!("Launcher update check failed: {error}"));
+            Error::Update(error.to_string())
+        })?
         .check()
         .await
-        .map_err(|error| Error::Update(error.to_string()))?;
+        .map_err(|error| {
+            add_app_log(format!("Launcher update check failed: {error}"));
+            Error::Update(error.to_string())
+        })?;
 
     Ok(match update {
-        Some(update) => UpdateInfo {
-            available: true,
-            current_version,
-            version: Some(update.version),
-            notes: update.body,
-            date: update.date.map(|date| date.to_string()),
-            rustfs_running: state::is_rustfs_process_running(),
-        },
-        None => UpdateInfo {
-            available: false,
-            current_version,
-            version: None,
-            notes: None,
-            date: None,
-            rustfs_running: state::is_rustfs_process_running(),
-        },
+        Some(update) => {
+            add_app_log(format!(
+                "Launcher update available: {current_version} -> {}",
+                update.version
+            ));
+            UpdateInfo {
+                available: true,
+                current_version,
+                version: Some(update.version),
+                notes: update.body,
+                date: update.date.map(|date| date.to_string()),
+                rustfs_running: state::is_rustfs_process_running(),
+            }
+        }
+        None => {
+            add_app_log(format!(
+                "Launcher {current_version} is already the latest release"
+            ));
+            UpdateInfo {
+                available: false,
+                current_version,
+                version: None,
+                notes: None,
+                date: None,
+                rustfs_running: state::is_rustfs_process_running(),
+            }
+        }
     })
 }
 

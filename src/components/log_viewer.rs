@@ -37,10 +37,12 @@ pub fn LogViewer(
     view! {
         <div class="log-panel">
             <div class="log-header">
-                <div class="log-tabs">
+                <div class="log-tabs" role="tablist" aria-label="Log sources">
                     <button
                         class="log-tab"
                         class:active=move || current_log_type.get() == LogType::App
+                        role="tab"
+                        aria-selected=move || current_log_type.get() == LogType::App
                         on:click=move |_| set_current_log_type.set(LogType::App)
                     >
                         "App Logs"
@@ -48,6 +50,8 @@ pub fn LogViewer(
                     <button
                         class="log-tab"
                         class:active=move || current_log_type.get() == LogType::RustFS
+                        role="tab"
+                        aria-selected=move || current_log_type.get() == LogType::RustFS
                         on:click=move |_| set_current_log_type.set(LogType::RustFS)
                     >
                         "RustFS Output"
