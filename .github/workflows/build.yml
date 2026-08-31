@@ -151,13 +151,13 @@ jobs:
           # unrelated Homebrew installs fail before dependency resolution.
           brew untap aws/tap || true
           brew install trunk
-          cargo install tauri-cli
+          cargo install tauri-cli --version 2.11.4 --locked
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
           cargo install trunk --version 0.21.14 --locked
-          cargo install tauri-cli
+          cargo install tauri-cli --version 2.11.4 --locked
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
