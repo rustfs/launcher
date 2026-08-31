@@ -147,6 +147,9 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
+          # The hosted macOS image can contain an untrusted aws/tap that makes
+          # unrelated Homebrew installs fail before dependency resolution.
+          brew untap aws/tap || true
           brew install trunk
           cargo install tauri-cli
 
