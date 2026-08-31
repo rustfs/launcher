@@ -47,7 +47,7 @@ jobs:
             exit 1
           fi
           
-          echo "version=$UPSTREAM_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           echo "✅ 上游最新版本: $UPSTREAM_VERSION"
       
       - name: 获取当前仓库版本
@@ -55,7 +55,7 @@ jobs:
         run: |
           # 从最新的 git tag 获取当前版本
           CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 当前版本: $CURRENT_VERSION"
       
       - name: 比较版本
@@ -72,16 +72,22 @@ jobs:
           
           if [ "$FORCE" = "true" ]; then
             echo "🔨 强制构建模式"
-            echo "has_new_version=true" >> $GITHUB_OUTPUT
-            echo "should_build=true" >> $GITHUB_OUTPUT
+            {
+              echo "has_new_version=true"
+              echo "should_build=true"
+            } >> "$GITHUB_OUTPUT"
           elif [ "$UPSTREAM_NORMALIZED" != "$CURRENT_NORMALIZED" ]; then
             echo "🆕 发现新版本: $UPSTREAM (当前: $CURRENT)"
-            echo "has_new_version=true" >> $GITHUB_OUTPUT
-            echo "should_build=true" >> $GITHUB_OUTPUT
+            {
+              echo "has_new_version=true"
+              echo "should_build=true"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "✅ 已是最新版本"
-            echo "has_new_version=false" >> $GITHUB_OUTPUT
-            echo "should_build=false" >> $GITHUB_OUTPUT
+            {
+              echo "has_new_version=false"
+              echo "should_build=false"
+            } >> "$GITHUB_OUTPUT"
           fi
       
       - name: 创建新版本标签
