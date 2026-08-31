@@ -16,6 +16,11 @@ on:
         description: "RustFS release tag to bundle. Defaults to the latest upstream release."
         required: false
         type: string
+      publish:
+        description: "Publish release assets and upload to R2. Manual runs default to a dry run."
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # Build strategy check - determine build type and version
@@ -29,6 +34,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       release_tag: ${{ steps.check.outputs.release_tag }}
       is_release: ${{ steps.check.outputs.is_release }}
+      should_publish: ${{ steps.check.outputs.should_publish }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -37,31 +43,38 @@ jobs:
 
       - name: Determine build strategy
         id: check
+        env:
+          MANUAL_PUBLISH: ${{ inputs.publish }}
         run: |
           should_build=true
           version=""
           release_tag=""
           is_release=false
+          should_publish=false
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # Release event - get version from release tag
             release_tag="${{ github.event.release.tag_name }}"
             is_release=true
+            should_publish=true
             echo "📦 Release build detected: $release_tag"
           elif [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
             # Tag push - get version from tag
             release_tag="${GITHUB_REF#refs/tags/}"
             is_release=true
+            should_publish=true
             echo "🏷️ Tag build detected: $release_tag"
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ -n "${{ github.event.inputs.tag }}" ]]; then
             # Manual trigger with tag input - treat as release
             release_tag="${{ github.event.inputs.tag }}"
             is_release=true
+            should_publish="${MANUAL_PUBLISH:-false}"
             echo "🏷️ Manual release build detected: $release_tag"
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             # Manual trigger against a tag ref
             release_tag="${GITHUB_REF#refs/tags/}"
             is_release=true
+            should_publish="${MANUAL_PUBLISH:-false}"
             echo "🏷️ Manual tag-ref build detected: $release_tag"
           else
             # Manual trigger without tag or other
@@ -73,15 +86,19 @@ jobs:
             version="$release_tag"
           fi
 
-          echo "should_build=$should_build" >> $GITHUB_OUTPUT
-          echo "version=$version" >> $GITHUB_OUTPUT
-          echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
-          echo "is_release=$is_release" >> $GITHUB_OUTPUT
+          {
+            echo "should_build=$should_build"
+            echo "version=$version"
+            echo "release_tag=$release_tag"
+            echo "is_release=$is_release"
+            echo "should_publish=$should_publish"
+          } >> "$GITHUB_OUTPUT"
 
           echo "📊 Build Summary:"
           echo "  - Should build: $should_build"
           echo "  - Version: $version"
           echo "  - Is release: $is_release"
+          echo "  - Publish: $should_publish"
 
   build:
     name: Build
@@ -130,14 +147,17 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
+          # The hosted macOS image can contain an untrusted aws/tap that makes
+          # unrelated Homebrew installs fail before dependency resolution.
+          brew untap aws/tap || true
           brew install trunk
-          cargo install tauri-cli
+          cargo install tauri-cli --version 2.11.4 --locked
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
           cargo install trunk --version 0.21.14 --locked
-          cargo install tauri-cli
+          cargo install tauri-cli --version 2.11.4 --locked
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -224,16 +244,20 @@ jobs:
             echo "⚠️ No RustFS asset for $slug in $UPSTREAM_TAG"
             echo "available assets:"
             printf '%s\n' "$asset_list"
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "slug=$slug" >> "$GITHUB_OUTPUT"
+            {
+              echo "available=false"
+              echo "slug=$slug"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "✅ Using $selected"
-          echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "slug=$slug" >> "$GITHUB_OUTPUT"
-          echo "asset=$selected" >> "$GITHUB_OUTPUT"
-          echo "dest=$dest" >> "$GITHUB_OUTPUT"
+          {
+            echo "available=true"
+            echo "slug=$slug"
+            echo "asset=$selected"
+            echo "dest=$dest"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download RustFS binary (Unix)
         if: runner.os != 'Windows' && steps.rustfs_asset.outputs.available == 'true'
@@ -307,89 +331,52 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          mkdir -p artifacts
-
-          # 允许空 glob 返回空数组，避免 zip 在找不到文件时直接失败
-          shopt -s nullglob
+          ARTIFACT_DIR="$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$ARTIFACT_DIR"
 
           # Format: rustfs-launcher-{os}-{arch}-{version}
           ARTIFACT_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-${VERSION}"
+          LATEST_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
 
-          # 在 workspace 内搜索打包输出，不依赖固定路径
-          APP_DIR=$(find src-tauri target -path "*bundle/macos/*.app" -type d -print -quit 2>/dev/null || true)
-          UPDATER_FILE=$(find src-tauri target -path "*bundle/macos/*.app.tar.gz" -type f -print -quit 2>/dev/null || true)
-          DMG_FILE=$(find src-tauri target -path "*bundle/dmg/*.dmg" -type f -print -quit 2>/dev/null || true)
+          # 使用绝对路径，避免后续进入 app bundle 目录后破坏 updater/artifact 路径。
+          APP_DIR=$(find "$GITHUB_WORKSPACE/src-tauri" "$GITHUB_WORKSPACE/target" -path "*bundle/macos/*.app" -type d -print -quit 2>/dev/null || true)
+          DMG_FILE=$(find "$GITHUB_WORKSPACE/src-tauri" "$GITHUB_WORKSPACE/target" -path "*bundle/dmg/*.dmg" -type f -print -quit 2>/dev/null || true)
+          UPDATER_FILE=""
 
           echo "发现的 .app 目录：${APP_DIR:-无}"
-          echo "发现的 updater 文件：${UPDATER_FILE:-无}"
           echo "发现的 .dmg 文件：${DMG_FILE:-无}"
-          find src-tauri target -path "*bundle/*" -print 2>/dev/null | head -80 || true
+          find "$GITHUB_WORKSPACE/src-tauri" "$GITHUB_WORKSPACE/target" -path "*bundle/*" -print 2>/dev/null | head -80 || true
 
-          # `--bundles app` used to skip updater archives. If Tauri did not emit
-          # one, build it from the .app so latest.json can still be published.
-          if [ -z "$UPDATER_FILE" ] && [ -n "$APP_DIR" ]; then
+          if [ -z "$APP_DIR" ]; then
+            echo "❌ 未找到 .app 产物"
+            exit 1
+          fi
+
+          codesign --force --deep --sign - "$APP_DIR"
+          codesign --verify --deep --strict --verbose=4 "$APP_DIR"
+
+          # Rebuild the updater after signing the app so the archive contains
+          # the exact bundle that users will install.
+          if [ "$IS_RELEASE" = "true" ]; then
             APP_PARENT="$(dirname "$APP_DIR")"
             APP_NAME="$(basename "$APP_DIR")"
             UPDATER_FILE="${APP_PARENT}/${APP_NAME}.tar.gz"
             echo "ℹ️ Creating updater archive: $UPDATER_FILE"
             tar -C "$APP_PARENT" -czf "$UPDATER_FILE" "$APP_NAME"
-            if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-              cargo tauri signer sign "$UPDATER_FILE"
-            fi
+            rm -f "${UPDATER_FILE}.sig"
+            cargo tauri signer sign "$UPDATER_FILE"
           fi
 
-          # Copy and rename DMG
-          if [ -n "$DMG_FILE" ]; then
-            cp "$DMG_FILE" "artifacts/${ARTIFACT_PREFIX}.dmg"
-            echo "✅ Created: ${ARTIFACT_PREFIX}.dmg"
-          fi
+          bash scripts/package-macos-artifacts.sh \
+            "$APP_DIR" \
+            "$UPDATER_FILE" \
+            "$DMG_FILE" \
+            "$ARTIFACT_DIR" \
+            "$ARTIFACT_PREFIX" \
+            "$LATEST_PREFIX" \
+            "$IS_RELEASE"
 
-          # Create and rename app.zip
-          if [ -n "$APP_DIR" ]; then
-            codesign --force --deep --sign - "$APP_DIR"
-            codesign --verify --deep --strict --verbose=4 "$APP_DIR"
-
-            APP_PARENT="$(dirname "$APP_DIR")"
-            APP_NAME="$(basename "$APP_DIR")"
-            cd "$APP_PARENT"
-            ditto -c -k --keepParent "$APP_NAME" "$GITHUB_WORKSPACE/artifacts/${ARTIFACT_PREFIX}.app.zip"
-            echo "✅ Created: ${ARTIFACT_PREFIX}.app.zip"
-          else
-            echo "❌ 未找到 .app 产物"
-            exit 1
-          fi
-
-          if [ "$IS_RELEASE" != "true" ]; then
-            echo "ℹ️ Development build: updater artifact is disabled"
-          elif [ -n "$UPDATER_FILE" ] && [ -f "${UPDATER_FILE}.sig" ]; then
-            UPDATER_NAME="${ARTIFACT_PREFIX}.app.tar.gz"
-            cp "$UPDATER_FILE" "artifacts/$UPDATER_NAME"
-            cp "${UPDATER_FILE}.sig" "artifacts/${UPDATER_NAME}.sig"
-            echo "✅ Created updater: $UPDATER_NAME"
-          else
-            echo "❌ 未找到 macOS updater 产物或签名"
-            exit 1
-          fi
-
-          # Create latest version files, preserving compound suffixes such as .app.tar.gz.sig
-          cd "$GITHUB_WORKSPACE/artifacts"
-          LATEST_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
-          VERSIONED_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-${VERSION}"
-          for file in "${VERSIONED_PREFIX}"*; do
-            if [ -f "$file" ]; then
-              suffix="${file#"$VERSIONED_PREFIX"}"
-              cp "$file" "${LATEST_PREFIX}${suffix}"
-              echo "✅ Created latest: ${LATEST_PREFIX}${suffix}"
-            fi
-          done
-
-          # 确保确实生成了产物
-          if [ $(ls -1 | wc -l) -eq 0 ]; then
-            echo "❌ 未生成任何 artifacts"
-            exit 1
-          fi
-
-          ls -la "$GITHUB_WORKSPACE/artifacts"
+          ls -la "$ARTIFACT_DIR"
 
       - name: Prepare and rename artifacts (Windows)
         if: runner.os == 'Windows' && steps.rustfs_asset.outputs.available == 'true'
@@ -490,7 +477,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload to Cloudflare R2
-        if: needs.build-check.outputs.is_release == 'true' && steps.rustfs_asset.outputs.available == 'true'
+        if: needs.build-check.outputs.should_publish == 'true' && steps.rustfs_asset.outputs.available == 'true'
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -586,8 +573,8 @@ jobs:
 
           # Generate checksums
           cd release-assets
-          if ls *.dmg *.zip *.msi *.exe 2>/dev/null; then
-            sha256sum * > SHA256SUMS
+          if compgen -G '*.dmg' >/dev/null || compgen -G '*.zip' >/dev/null || compgen -G '*.msi' >/dev/null || compgen -G '*.exe' >/dev/null; then
+            sha256sum -- * > SHA256SUMS
             echo "✅ SHA256SUMS generated"
           else
             echo "⚠️ No files found for checksum generation"
@@ -652,8 +639,8 @@ jobs:
           jq . latest.json
 
       - name: Upload to GitHub Release
-        if: needs.build-check.outputs.is_release == 'true'
-        uses: softprops/action-gh-release@v1
+        if: needs.build-check.outputs.should_publish == 'true'
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.build-check.outputs.release_tag }}
           files: release-assets/*
@@ -661,3 +648,10 @@ jobs:
           prerelease: ${{ contains(needs.build-check.outputs.release_tag, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release preview
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-assets-preview
+          path: release-assets/*
+          if-no-files-found: error

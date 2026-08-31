@@ -1,13 +1,13 @@
 use crate::binaries;
 use crate::config::RustFsConfig;
 use crate::error::{Error, Result};
+use crate::network;
 use crate::platform;
 use crate::process;
 use crate::rustfs_update::{self, RustFsUpdateInfo};
 use crate::state::{self, add_app_log};
 use serde::Serialize;
 use std::io::Error as IoError;
-use std::net::ToSocketAddrs;
 use tauri::async_runtime;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_opener::OpenerExt;
@@ -56,18 +56,6 @@ enum UpdateProgress {
         content_length: Option<u64>,
     },
     Finished,
-}
-
-fn tcp_online(host: String, port: u16) -> bool {
-    let Ok(mut addrs) = (host.as_str(), port).to_socket_addrs() else {
-        return false;
-    };
-    let Some(socket_addr) = addrs.next() else {
-        return false;
-    };
-
-    std::net::TcpStream::connect_timeout(&socket_addr, std::time::Duration::from_millis(1000))
-        .is_ok()
 }
 
 #[tauri::command]
@@ -128,7 +116,7 @@ pub async fn get_rustfs_logs() -> Result<Vec<String>> {
 
 #[tauri::command]
 pub async fn check_tcp_connection(host: String, port: u16) -> Result<bool> {
-    let result = async_runtime::spawn_blocking(move || tcp_online(host, port))
+    let result = async_runtime::spawn_blocking(move || network::tcp_online(&host, port))
         .await
         .unwrap_or(false);
     Ok(result)
@@ -142,7 +130,7 @@ pub async fn is_rustfs_process_running() -> Result<bool> {
 #[tauri::command]
 pub async fn get_runtime_status(host: String, port: u16) -> Result<RuntimeStatus> {
     let managed_running = state::is_rustfs_process_running();
-    let service_online = async_runtime::spawn_blocking(move || tcp_online(host, port))
+    let service_online = async_runtime::spawn_blocking(move || network::tcp_online(&host, port))
         .await
         .unwrap_or(false);
 
@@ -303,12 +291,7 @@ pub async fn install_rustfs_update() -> Result<CommandResponse> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_http_url, tcp_online};
-
-    #[test]
-    fn tcp_online_rejects_invalid_hosts() {
-        assert!(!tcp_online("not a host".into(), 9));
-    }
+    use super::is_http_url;
 
     #[test]
     fn http_url_validation() {

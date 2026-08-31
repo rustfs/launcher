@@ -66,6 +66,7 @@ jobs:
           cargo test -p rustfs-launcher --all-features --locked
           cargo test -p rustfs-launcher-ui --locked
           bash scripts/select-rustfs-asset.sh --self-test
+          bash scripts/test-package-macos-artifacts.sh
 
   test-native:
     name: Native tests (${{ matrix.os }})
@@ -94,6 +95,16 @@ jobs:
 
       - name: Compile tests
         run: cargo test -p rustfs-launcher --all-features --locked --no-run
+
+      - name: Run portable network tests
+        shell: bash
+        run: |
+          test_binary="target/portable-network-tests"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            test_binary="${test_binary}.exe"
+          fi
+          rustc --edition=2021 --test src-tauri/src/network.rs -o "$test_binary"
+          "$test_binary"
 
       - name: Run tests
         # The Tauri-linked lib test harness fails to start on Windows GHA with

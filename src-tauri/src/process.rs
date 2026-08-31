@@ -1,11 +1,11 @@
 use crate::binaries;
 use crate::config::RustFsConfig;
 use crate::error::{Error, Result};
+use crate::network::{format_bind_address, is_port_available};
 use crate::state::{
     acquire, add_app_log, add_rustfs_log, is_rustfs_process_running, set_rustfs_process, APP_HANDLE,
 };
 use std::io::{BufRead, BufReader};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -13,14 +13,6 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 const EARLY_EXIT_WAIT: Duration = Duration::from_millis(400);
-
-pub(crate) fn format_bind_address(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
 
 pub(crate) fn validate_data_path(path: &str) -> Result<&str> {
     let trimmed = path.trim();
@@ -45,12 +37,6 @@ pub(crate) fn resolve_data_path(path: &str) -> Result<PathBuf> {
     let candidate = PathBuf::from(trimmed);
     if !candidate.exists() {
         return Err(Error::DataPathNotExist(trimmed.to_string()));
-    }
-    if candidate.is_file() {
-        return candidate
-            .parent()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| Error::DataPathNotDirectory(trimmed.to_string()));
     }
     if !candidate.is_dir() {
         return Err(Error::DataPathNotDirectory(trimmed.to_string()));
@@ -210,6 +196,12 @@ fn ensure_executable(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let metadata = std::fs::metadata(path)
         .map_err(|err| Error::Metadata(path.to_string_lossy().to_string(), err))?;
+    if !metadata.is_file() {
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path is not a regular file",
+        )));
+    }
     let mut permissions = metadata.permissions();
     add_app_log(format!(
         "File permissions for {}: {:o}",
@@ -217,15 +209,13 @@ fn ensure_executable(path: &Path) -> Result<()> {
         permissions.mode()
     ));
 
-    if permissions.mode() & 0o111 == 0 {
+    if permissions.mode() & 0o100 == 0 {
         add_app_log(format!(
             "Binary is not executable, attempting to set +x: {}",
             path.display()
         ));
-        permissions.set_mode(permissions.mode() | 0o755);
-        if let Err(err) = std::fs::set_permissions(path, permissions) {
-            add_app_log(format!("WARNING: Failed to make binary executable: {err}"));
-        }
+        permissions.set_mode(permissions.mode() | 0o100);
+        std::fs::set_permissions(path, permissions).map_err(Error::Io)?;
     }
     Ok(())
 }
@@ -253,10 +243,6 @@ fn ensure_executable(path: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-pub(crate) fn is_port_available(host: &str, port: u16) -> bool {
-    TcpListener::bind((host, port)).is_ok()
 }
 
 pub fn diagnose_binary() -> Result<String> {
@@ -293,10 +279,16 @@ pub(crate) struct LaunchPlan {
 
 pub(crate) fn build_launch_plan(config: &RustFsConfig, logs_dir: &Path) -> LaunchPlan {
     let mut args = Vec::new();
-    let mut env = vec![(
-        "RUSTFS_OBS_LOG_DIRECTORY".to_string(),
-        logs_dir.to_string_lossy().into_owned(),
-    )];
+    let mut env = vec![
+        (
+            "RUSTFS_OBS_LOG_DIRECTORY".to_string(),
+            logs_dir.to_string_lossy().into_owned(),
+        ),
+        (
+            "RUSTFS_CONSOLE_ENABLE".to_string(),
+            config.console_enable.to_string(),
+        ),
+    ];
 
     let address = format_bind_address(config.bind_host(), config.api_port());
     args.push("--address".to_string());
@@ -451,14 +443,8 @@ mod tests {
     use super::*;
     use crate::config::RustFsConfig;
     use std::fs;
+    use std::net::TcpListener;
     use std::path::PathBuf;
-
-    #[test]
-    fn wraps_ipv6_bind_addresses() {
-        assert_eq!(format_bind_address("127.0.0.1", 9000), "127.0.0.1:9000");
-        assert_eq!(format_bind_address("::1", 9000), "[::1]:9000");
-        assert_eq!(format_bind_address("[::1]", 9001), "[::1]:9001");
-    }
 
     #[test]
     fn rejects_flag_like_data_paths() {
@@ -471,6 +457,18 @@ mod tests {
             Err(Error::InvalidDataPath(_))
         ));
         assert!(validate_data_path("/tmp/rustfs-data").is_ok());
+    }
+
+    #[test]
+    fn rejects_a_file_as_the_data_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("not-a-directory");
+        fs::write(&file, b"data").unwrap();
+
+        assert!(matches!(
+            resolve_data_path(file.to_str().unwrap()),
+            Err(Error::DataPathNotDirectory(path)) if path == file.to_string_lossy()
+        ));
     }
 
     #[test]
@@ -594,6 +592,52 @@ mod tests {
             .iter()
             .any(|(key, value)| key == "RUSTFS_SECRET_KEY" && value == "sk-secret"));
         assert!(plan.args.contains(&"--console-enable".to_string()));
+        assert!(plan
+            .env
+            .iter()
+            .any(|(key, value)| key == "RUSTFS_CONSOLE_ENABLE" && value == "true"));
+    }
+
+    #[test]
+    fn disabled_console_is_explicit_in_the_environment() {
+        let config = RustFsConfig {
+            data_path: "/tmp/data".into(),
+            console_enable: false,
+            ..RustFsConfig::default()
+        };
+        let plan = build_launch_plan(&config, Path::new("/tmp/logs"));
+
+        assert!(!plan.args.iter().any(|arg| arg == "--console-enable"));
+        assert!(!plan.args.iter().any(|arg| arg == "--console-address"));
+        assert!(plan
+            .env
+            .iter()
+            .any(|(key, value)| key == "RUSTFS_CONSOLE_ENABLE" && value == "false"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn making_a_binary_executable_preserves_other_permission_bits() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("rustfs");
+        fs::write(&binary, b"binary").unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o640)).unwrap();
+
+        ensure_executable(&binary).unwrap();
+
+        let mode = fs::metadata(&binary).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o740);
+    }
+
+    #[test]
+    fn rejects_a_directory_as_the_binary_path() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            ensure_executable(dir.path()),
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::InvalidInput
+        ));
     }
 
     #[test]
