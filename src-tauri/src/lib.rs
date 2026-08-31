@@ -2,6 +2,7 @@ mod binaries;
 mod commands;
 mod config;
 mod error;
+mod network;
 mod platform;
 mod process;
 mod rustfs_update;
