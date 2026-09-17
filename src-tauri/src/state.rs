@@ -280,6 +280,12 @@ pub fn terminate_rustfs_process() {
 }
 
 #[cfg(test)]
+pub(crate) fn lock_process_for_test() -> MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    acquire(&LOCK)
+}
+
+#[cfg(test)]
 mod tests {
     use super::redact_secrets;
 

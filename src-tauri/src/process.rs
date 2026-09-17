@@ -682,6 +682,7 @@ mod tests {
 
     #[test]
     fn launch_and_terminate_stub_binary() {
+        let _guard = crate::state::lock_process_for_test();
         crate::state::terminate_rustfs_process();
 
         let dir = tempfile::tempdir().unwrap();

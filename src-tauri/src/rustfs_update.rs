@@ -829,6 +829,7 @@ B34390D7CE5C1797B4A127261FEE1926C2AED1D280E1EC59F149F255902221AF *rustfs-windows
 
     #[test]
     fn offline_install_then_launch_uses_the_committed_binary() {
+        let _guard = crate::state::lock_process_for_test();
         crate::state::terminate_rustfs_process();
 
         let dir = tempfile::tempdir().unwrap();
