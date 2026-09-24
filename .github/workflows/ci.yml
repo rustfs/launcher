@@ -6,10 +6,15 @@ on:
       - main
   pull_request:
 
+# Native Windows/macOS tests are in ci-native.yml. They stay on GitHub-hosted
+# runners and run only via workflow_dispatch: the org has no self-hosted
+# macOS/Windows runners, and those tests execute on the target OS.
+
 jobs:
   check:
     name: Check and Test
-    runs-on: ubuntu-latest
+    runs-on: sm-standard-2
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -67,48 +72,3 @@ jobs:
           cargo test -p rustfs-launcher-ui --locked
           bash scripts/select-rustfs-asset.sh --self-test
           bash scripts/test-package-macos-artifacts.sh
-
-  test-native:
-    name: Native tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Run backend Clippy
-        run: cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
-
-      - name: Compile tests
-        run: cargo test -p rustfs-launcher --all-features --locked --no-run
-
-      - name: Run portable network tests
-        shell: bash
-        run: |
-          test_binary="target/portable-network-tests"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            test_binary="${test_binary}.exe"
-          fi
-          rustc --edition=2021 --test src-tauri/src/network.rs -o "$test_binary"
-          "$test_binary"
-
-      - name: Run tests
-        # The Tauri-linked lib test harness fails to start on Windows GHA with
-        # STATUS_ENTRYPOINT_NOT_FOUND (WebView2/COM loader). Windows cfg code is
-        # still compiled by clippy --all-targets and cargo test --no-run.
-        if: runner.os != 'Windows'
-        run: cargo test -p rustfs-launcher --all-features --locked

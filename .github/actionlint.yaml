@@ -1,0 +1,6 @@
+self-hosted-runner:
+  # Custom labels used in runs-on. Keep in sync with the org runner pool.
+  labels:
+    - sm-standard-2
+    - sm-standard-4
+    - dind-sm-standard-2

@@ -1,11 +1,14 @@
 name: Build and Release
 
+# Manual only. macOS and Windows installers need GitHub-hosted runners
+# (macos-latest, macos-15-intel, windows-latest). The org has no self-hosted
+# macOS or Windows runners, and these Tauri bundles cannot be cross-compiled
+# on Linux: DMG creation and codesign require macOS, and the NSIS installer
+# requires the Windows toolchain. Tag pushes, GitHub Release events, and the
+# upstream-sync schedule do not start this workflow. Linux helper jobs below
+# use the org self-hosted runner.
+
 on:
-  push:
-    tags:
-      - "*.*.*"
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -26,7 +29,8 @@ jobs:
   # Build strategy check - determine build type and version
   build-check:
     name: Build Strategy Check
-    runs-on: ubuntu-latest
+    runs-on: sm-standard-2
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -109,6 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # GitHub-hosted. This workflow is workflow_dispatch only; see the header.
         include:
           - platform: "macos-latest"
             rust_target: "aarch64-apple-darwin"
@@ -126,6 +131,7 @@ jobs:
             arch: "x86_64"
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -543,12 +549,20 @@ jobs:
   upload-release-assets:
     name: Upload Release Assets
     needs: [build-check, build]
-    runs-on: ubuntu-latest
+    runs-on: sm-standard-2
+    timeout-minutes: 30
     if: needs.build-check.outputs.is_release == 'true'
     permissions:
       contents: write
 
     steps:
+      - name: Install jq
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v6
         with:
