@@ -49,7 +49,7 @@ if [ "$UPSTREAM_NORMALIZED" != "$CURRENT_NORMALIZED" ]; then
     echo "建议操作："
     echo "  1. 运行 'git tag $UPSTREAM_VERSION' 创建新标签"
     echo "  2. 运行 'git push origin $UPSTREAM_VERSION' 推送标签"
-    echo "  3. 或等待自动同步工作流执行（每小时一次）"
+    echo "  3. 或等待自动同步工作流执行（每天 02:00 UTC 一次；只创建 tag，桌面安装包需手动构建）"
     exit 0
 else
     echo "✅ 已是最新版本"

@@ -21,18 +21,22 @@ Use this guide when contributing to RustFS Launcher; it highlights the project l
 The repository includes automated workflows to keep in sync with upstream rustfs/rustfs releases:
 
 ### Upstream Version Sync (`.github/workflows/upstream-sync.yml`)
-- **Scheduled Check**: Runs hourly to check `https://version.rustfs.com/latest.json` for new rustfs/rustfs releases.
-- **Automatic Trigger**: When a new upstream version is detected, it automatically creates a corresponding git tag and triggers the build workflow.
-- **Manual Trigger**: Can be manually triggered via GitHub Actions with an optional `force_build` parameter.
+- **Scheduled Check**: Runs daily at 02:00 UTC on the `sm-standard-2` self-hosted runner. It checks `https://version.rustfs.com/latest.json` for new rustfs/rustfs releases.
+- **Tag only**: When a new upstream version is detected, it creates and pushes a matching git tag. It does not start the desktop build.
+- **Manual Trigger**: Can be manually triggered via GitHub Actions with an optional `force_build` parameter, which repeats the notice to dispatch a desktop build.
 - **Version Tracking**: Compares upstream release tags with local repository tags to detect updates.
 
 ### Build Workflow (`.github/workflows/build.yml`)
-- Triggered automatically by new tags created by the upstream sync workflow.
-- Builds platform-specific installers for Windows (macOS support can be uncommented).
+- **Manual only** (`workflow_dispatch`). Tag pushes, GitHub Release events, and the upstream sync schedule do not start it.
+- Linux helper jobs (`build-check`, `upload-release-assets`) run on `sm-standard-2`.
+- macOS Apple Silicon (`macos-latest`), macOS Intel (`macos-15-intel`), and Windows (`windows-latest`) builds stay on GitHub-hosted runners. The org has no self-hosted macOS or Windows runners, and the DMG/`codesign` and NSIS bundles cannot be cross-compiled on Linux. Dispatching this workflow bills those runners.
 - Downloads the latest RustFS binaries from GitHub release assets resolved through `latest.json` during the build process.
-- Produces distributable packages (DMG, MSI, AppImage, etc.) as GitHub release artifacts.
+- Produces distributable packages (DMG, NSIS) as GitHub release artifacts when `publish` is enabled.
 
-This automation ensures that whenever rustfs/rustfs publishes a new version, this launcher repository will automatically build and release updated installers within 24 hours.
+CI on push and pull request runs on `sm-standard-2`. Windows and macOS native tests are unchanged and live in `.github/workflows/ci-native.yml`, which is also manual-only and uses GitHub-hosted runners.
+
+### Runner access
+`sm-standard-2` is an organization self-hosted runner. The runner group may need to be granted access to this repository before the Linux jobs can start.
 
 ## Coding Style & Naming Conventions
 Use idiomatic Rust formatting (4-space indentation, `snake_case` modules/functions, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants) and guard changes with `cargo fmt`.

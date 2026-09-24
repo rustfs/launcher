@@ -1,6 +1,6 @@
 # GitHub Actions 自动编译说明
 
-本项目配置了完整的 GitHub Actions CI/CD 流程，支持自动编译和发布。
+本项目的自动任务跑在组织自托管 runner（`sm-standard-2`）上。macOS / Windows 任务没有自托管 runner，只在手动触发时使用 GitHub 托管 runner。
 
 ## 工作流说明
 
@@ -10,18 +10,27 @@
 - Push 到 `main` 分支
 - 创建或更新 Pull Request
 
+**Runner:** `sm-standard-2`
+
 **功能:**
 - 代码格式检查 (rustfmt)
 - Clippy 代码质量检查
 - 前端构建验证
 - 单元测试运行
 
+Windows / macOS 原生测试在 `.github/workflows/ci-native.yml`，步骤与原来相同，只响应 `workflow_dispatch`，使用 `windows-latest` 和 `macos-latest`。
+
 ### 2. Build and Release 工作流 (`.github/workflows/build.yml`)
 
 **触发条件:**
-- 推送 tag（例如: `0.1.0`, `v1.0.0`）
-- 发布 Release（当 Release 状态变为 published 时）
-- 手动触发 (workflow_dispatch)
+- 仅手动触发 (`workflow_dispatch`)
+- 推送 tag 或发布 Release **不会**再启动本工作流
+
+**Runner:**
+- `build-check`、`upload-release-assets`：`sm-standard-2`
+- macOS Apple Silicon：`macos-latest`（GitHub 托管，手动触发才计费）
+- macOS Intel：`macos-15-intel`（GitHub 托管，手动触发才计费）
+- Windows：`windows-latest`（GitHub 托管，手动触发才计费）
 
 **支持平台:**
 - **macOS Apple Silicon** (aarch64)
@@ -59,37 +68,27 @@
    git push origin main
    ```
 
-3. **发布方式（选择其一）**
+3. **手动构建并发布**
 
-   **方式一：推送 tag（自动创建 Release）**
+   上游同步工作流每天只会创建对应的 git tag，不会启动桌面编译。
+   在 Actions 页面选择 "Build and Release"，或使用 GitHub CLI（会使用计费的 macOS/Windows runner）：
+
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   gh workflow run build.yml --ref v0.1.0 -f tag=v0.1.0 -f publish=true
    ```
 
-   **方式二：通过 GitHub Web 界面创建 Release**
-   - 访问仓库的 "Releases" 页面
-   - 点击 "Draft a new release"
-   - 创建新的 tag（如 `v0.1.0`）或选择已有 tag
-   - 填写 Release 标题和描述
-   - 点击 "Publish release"
-
-   **方式三：通过 GitHub CLI**
-   ```bash
-   gh release create v0.1.0 --title "v0.1.0" --notes "Release notes"
-   ```
+   `publish` 默认为 false，只上传 workflow artifact，不发布 Release、不上传 R2。
 
 4. **等待编译完成**
 
-   当 tag 推送或 Release 发布（published）后，GitHub Actions 会自动触发编译。
-   访问 GitHub Actions 页面查看编译进度:
+   访问 GitHub Actions 页面查看手动触发的编译进度:
    ```
    https://github.com/YOUR_USERNAME/YOUR_REPO/actions
    ```
 
 5. **发布完成**
 
-    编译成功后会自动:
+    `publish` 为 true 时，编译成功后会：
 
     - 将构建产物上传到 Release Assets
     - 将构建产物上传到 Cloudflare R2 (`s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/`)
@@ -137,7 +136,7 @@ rustfs-launcher-windows-x86_64/
 strategy:
   matrix:
     include:
-      - platform: 'ubuntu-latest'  # 添加 Linux 支持
+      - platform: 'sm-standard-2'  # 自托管 Linux；不要使用 ubuntu-latest
         target: 'x86_64-unknown-linux-gnu'
         # ...
 ```
@@ -182,7 +181,7 @@ strategy:
 1. **缓存优化**: 已配置 Rust 和 Node.js 缓存，加速编译
 2. **并行构建**: 三个平台同时编译，节省时间
 3. **失败容错**: 单个平台失败不影响其他平台编译
-4. **自动化发布**: Tag 推送后自动发布，无需手动操作
+4. **桌面安装包手动发布**: tag 与 Release 事件不再启动 GitHub 托管 runner
 
 ## 本地测试工作流
 

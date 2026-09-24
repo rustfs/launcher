@@ -308,7 +308,7 @@ make test-ci-job
 
 编辑 `.actrc.local`:
 ```
--P ubuntu-latest=catthehacker/ubuntu:full-latest
+-P sm-standard-2=catthehacker/ubuntu:full-latest
 ```
 
 ### 传递环境变量

@@ -1,7 +1,8 @@
 # act configuration file
 # This file configures the default behavior of act tool for local GitHub Actions testing
 
-# Use the catthehacker/ubuntu:act-latest image for better compatibility
+# Linux CI jobs use the org self-hosted label. Map it to the act Ubuntu image.
+-P sm-standard-2=catthehacker/ubuntu:act-latest
 -P ubuntu-latest=catthehacker/ubuntu:act-latest
 
 # Use linux/amd64 architecture

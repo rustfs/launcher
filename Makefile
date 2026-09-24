@@ -114,14 +114,14 @@ test-ci: check-act
 	@echo "Note: This uses Ubuntu container and may take a few minutes on first run."
 	act push -W .github/workflows/ci.yml \
 		--container-architecture linux/amd64 \
-		--platform ubuntu-latest=catthehacker/ubuntu:act-latest
+		--platform sm-standard-2=catthehacker/ubuntu:act-latest
 
 # Run CI workflow with full checks
 test-ci-full: check-act
 	@echo "Running CI workflow with all checks..."
 	act push -W .github/workflows/ci.yml \
 		--container-architecture linux/amd64 \
-		--platform ubuntu-latest=catthehacker/ubuntu:full-latest
+		--platform sm-standard-2=catthehacker/ubuntu:full-latest
 
 # Test build workflow (validates workflow file syntax and logic)
 # Uses act to verify the build workflow file is correct
@@ -157,7 +157,7 @@ test-build-docker: check-act
 	@sleep 3
 	act push -W .github/workflows/ci.yml \
 		--container-architecture linux/amd64 \
-		--platform ubuntu-latest=catthehacker/ubuntu:act-latest
+		--platform sm-standard-2=catthehacker/ubuntu:act-latest
 
 # List all jobs in workflows
 list-jobs: check-act
@@ -166,6 +166,9 @@ list-jobs: check-act
 	@echo ""
 	@echo "=== Build Workflow Jobs ==="
 	@act -W .github/workflows/build.yml -l
+	@echo ""
+	@echo "=== CI Native Workflow Jobs (manual) ==="
+	@act -W .github/workflows/ci-native.yml -l
 
 # Dry run - show what would be executed
 dry-run-ci: check-act
@@ -201,6 +204,6 @@ test-ci-verbose: check-act
 	@echo "Running CI workflow with verbose output..."
 	act push -W .github/workflows/ci.yml \
 		--container-architecture linux/amd64 \
-		--platform ubuntu-latest=catthehacker/ubuntu:act-latest \
+		--platform sm-standard-2=catthehacker/ubuntu:act-latest \
 		--verbose
 
