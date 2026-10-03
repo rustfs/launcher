@@ -82,7 +82,7 @@ Le serveur écrit ses propres journaux dans un dossier `logs` voisin du vôtre �
 | **API Port** | Le port du point de terminaison S3. `9000`, sauf si un autre programme l'occupe déjà. |
 | **Host** | `127.0.0.1` garde le serveur sur cette machine. Utilisez `0.0.0.0` pour le rendre accessible aux autres machines du réseau. |
 | **Console Endpoint** | Activez-le si vous voulez la console web de RustFS. Elle utilise son propre port, `9001` par défaut. |
-| **Access Key** / **Secret Key** | Les identifiants qu'utilisera votre client S3. Par défaut `rustfsadmin` / `rustfsadmin` : changez-les dès que le serveur est joignable depuis l'extérieur. |
+| **Access Key** / **Secret Key** | Les identifiants qu'utilisera votre client S3. Par défaut `rustfsadmin` / `rustfsadmin`, et ils sont mémorisés avec le formulaire. Le launcher refuse de démarrer sur un hôte qui n'est pas en boucle locale tant que les deux n'ont pas été changés ; un champ vide retombe aussi sur cette paire publique. |
 
 Vos saisies sont mémorisées : le démarrage suivant tient en un clic.
 
@@ -154,10 +154,10 @@ l'hôte et le port configurés. Le second dit à qui appartient ce processus :
 | --- | --- |
 | Ready to Launch | Rien ne tourne sur ce port. |
 | Managed by Launcher | Le launcher a démarré RustFS et peut l'arrêter. |
-| Detected Externally | Le port répond, mais le processus n'a pas été lancé ici — par exemple un RustFS démarré depuis un terminal. Le bouton d'arrêt reste alors désactivé. |
+| Detected Externally | Le port répond, mais le processus n'a pas été lancé ici — par exemple un RustFS démarré depuis un terminal. Le formulaire reste modifiable pour changer le port. Le bouton d'arrêt reste désactivé, car ce launcher ne possède pas ce processus. |
 
 **Les cartes de résumé.** API et Console affichent les ports et les ouvrent dans le navigateur une fois le
-service en ligne. Mode indique si le formulaire est *Editable* ou *Locked* parce que RustFS tourne.
+service en ligne. Mode n'est *Locked* que pendant que ce launcher exécute lui-même RustFS. Un serveur détecté à l'extérieur laisse le formulaire *Editable*.
 
 **Version & Updates.** Affiche la version du launcher et celle du RustFS intégré, et cherche une version plus
 récente quand vous le demandez.

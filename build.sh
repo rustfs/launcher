@@ -45,6 +45,12 @@ download_binary() {
     echo "Downloading $filename..."
     
     if curl -fL --retry 3 --retry-delay 5 -H "Cache-Control: no-cache" -o "$TEMP_DIR/$filename.zip" "$url"; then
+        local asset_name
+        asset_name="$(basename "$url")"
+        echo "Verifying ${asset_name}..."
+        curl -fsSL --retry 3 --retry-delay 5 -o "$TEMP_DIR/SHA256SUMS" \
+            "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_RELEASE_TAG}/SHA256SUMS"
+        bash scripts/verify-rustfs-checksum.sh "$TEMP_DIR/SHA256SUMS" "$TEMP_DIR/$filename.zip" "$asset_name"
         echo "Extracting $filename..."
         unzip -o -q "$TEMP_DIR/$filename.zip" -d "$TEMP_DIR/$filename"
         

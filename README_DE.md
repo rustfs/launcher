@@ -82,7 +82,7 @@ diesem Beispiel also `D:\RustFS\logs`.
 | **API Port** | Der Port des S3-Endpunkts. `9000`, sofern ihn nicht schon etwas anderes belegt. |
 | **Host** | `127.0.0.1` hält den Server auf diesem Rechner. Mit `0.0.0.0` erreichen ihn auch andere Geräte im Netz. |
 | **Console Endpoint** | Einschalten, wenn Sie die RustFS-Weboberfläche möchten. Sie läuft auf einem eigenen Port, standardmäßig `9001`. |
-| **Access Key** / **Secret Key** | Die Zugangsdaten für Ihren S3-Client. Voreingestellt sind `rustfsadmin` / `rustfsadmin` – ändern Sie sie, sobald der Server von außen erreichbar ist. |
+| **Access Key** / **Secret Key** | Die Zugangsdaten für Ihren S3-Client. Voreingestellt sind `rustfsadmin` / `rustfsadmin`, und sie werden mit dem Formular gespeichert. Auf einem Host, der nicht die lokale Loopback-Adresse ist, startet der Launcher nicht, solange beide noch der Vorgabe entsprechen; ein leeres Feld fällt ebenfalls auf dieses öffentliche Paar zurück. |
 
 Die Eingaben werden gemerkt, der nächste Start ist also ein einziger Klick.
 
@@ -155,10 +155,10 @@ Port etwas antwortet. Die zweite sagt, wem dieser Prozess gehört:
 | --- | --- |
 | Ready to Launch | Auf diesem Port läuft nichts. |
 | Managed by Launcher | Der Launcher hat RustFS gestartet und kann es wieder stoppen. |
-| Detected Externally | Der Port antwortet, aber der Prozess wurde nicht hier gestartet – etwa ein RustFS aus dem Terminal. Der Stopp-Knopf bleibt dann deaktiviert. |
+| Detected Externally | Der Port antwortet, aber der Prozess wurde nicht hier gestartet – etwa ein RustFS aus dem Terminal. Das Formular bleibt bearbeitbar, damit Sie den Port ändern können. Der Stopp-Knopf bleibt deaktiviert, weil dieser Launcher den Prozess nicht besitzt. |
 
 **Übersichtskarten.** API und Console zeigen die Ports und öffnen sie im Browser, sobald der Dienst online ist.
-Mode sagt, ob das Formular *Editable* oder wegen des laufenden Servers *Locked* ist.
+Mode ist nur *Locked*, solange dieser Launcher RustFS selbst ausführt. Ein extern erkannter Server lässt das Formular *Editable*.
 
 **Version & Updates.** Zeigt die Version des Launchers und die des eingebauten RustFS und sucht auf Wunsch nach
 einem neueren Release.

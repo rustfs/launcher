@@ -66,6 +66,7 @@ jobs:
           cargo test -p rustfs-launcher --all-features --locked
           cargo test -p rustfs-launcher-ui --locked
           bash scripts/select-rustfs-asset.sh --self-test
+          bash scripts/verify-rustfs-checksum.sh --self-test
           bash scripts/test-package-macos-artifacts.sh
 
   test-native:

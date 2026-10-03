@@ -1,3 +1,4 @@
+use crate::helpers::primary_action;
 use crate::types::{RustFsConfig, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
@@ -70,6 +71,7 @@ pub fn ConfigForm(
     #[prop(into)] set_config: WriteSignal<RustFsConfig>,
     #[prop(into)] is_running: Signal<bool>,
     #[prop(into)] can_stop: Signal<bool>,
+    #[prop(into)] action_busy: Signal<bool>,
     #[prop(into)] on_launch: Callback<SubmitEvent>,
     #[prop(into)] on_stop: Callback<()>,
 ) -> impl IntoView {
@@ -161,7 +163,13 @@ pub fn ConfigForm(
                             let drop_handler = Closure::wrap(Box::new(move |event: JsValue| {
                                 set_is_drag_over.set(false);
 
-                                if is_running.get_untracked() {
+                                if primary_action(
+                                    can_stop.get_untracked(),
+                                    action_busy.get_untracked(),
+                                    false,
+                                )
+                                .lock_form
+                                {
                                     return;
                                 }
 
@@ -178,7 +186,13 @@ pub fn ConfigForm(
                                 as Box<dyn FnMut(JsValue)>);
 
                             let hover_handler = Closure::wrap(Box::new(move |_: JsValue| {
-                                if !is_running.get_untracked() {
+                                if !primary_action(
+                                    can_stop.get_untracked(),
+                                    action_busy.get_untracked(),
+                                    false,
+                                )
+                                .lock_form
+                                {
                                     set_is_drag_over.set(true);
                                 }
                             })
@@ -227,7 +241,7 @@ pub fn ConfigForm(
     });
 
     let select_folder = move |_| {
-        if is_running.get() {
+        if primary_action(can_stop.get(), action_busy.get(), false).lock_form {
             return;
         }
 
@@ -250,18 +264,20 @@ pub fn ConfigForm(
     let handle_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
 
-        if is_running.get() {
-            if can_stop.get() {
-                on_stop.run(());
-            }
+        let current_config = config.get();
+        let path_empty = current_config.data_path.trim().is_empty();
+        let action = primary_action(can_stop.get(), action_busy.get(), path_empty);
+        if action_busy.get() {
+            return;
+        }
+        if action.stops_service {
+            on_stop.run(());
             return;
         }
 
         set_error_message.set(None);
 
-        let current_config = config.get();
-
-        if current_config.data_path.trim().is_empty() {
+        if path_empty {
             set_error_message.set(Some("Data path is required".to_string()));
             return;
         }
@@ -291,6 +307,23 @@ pub fn ConfigForm(
             return;
         }
 
+        if crate::helpers::refuses_public_default_credentials(
+            current_config.host.as_deref(),
+            current_config.access_key.as_deref(),
+            current_config.secret_key.as_deref(),
+        ) {
+            let host = current_config
+                .host
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_HOST);
+            set_error_message.set(Some(crate::helpers::public_default_credentials_message(
+                host,
+            )));
+            return;
+        }
+
         set_config.update(|c| {
             c.port = port;
             c.console_port = console_port;
@@ -300,8 +333,8 @@ pub fn ConfigForm(
     };
 
     view! {
-        <form class="config-form" class:locked=move || is_running.get() on:submit=handle_submit>
-            <Show when=move || is_running.get()>
+        <form class="config-form" class:locked=move || can_stop.get() || action_busy.get() on:submit=handle_submit>
+            <Show when=move || can_stop.get() || action_busy.get()>
                 <div class="lock-banner">
                     <span class="lock-banner-label">"Configuration Locked"</span>
                 </div>
@@ -318,14 +351,14 @@ pub fn ConfigForm(
                         <label for="data-path">"Data Path" <span class="required">"*"</span></label>
                         <div
                             class="path-input-group"
-                            class:drag-over=move || is_drag_over.get() && !is_running.get()
+                            class:drag-over=move || is_drag_over.get() && !can_stop.get() && !action_busy.get()
                         >
                             <input
                                 id="data-path"
                                 type="text"
                                 placeholder="Select or drop data directory..."
                                 prop:value=move || config.get().data_path
-                                disabled=move || is_running.get()
+                                disabled=move || can_stop.get() || action_busy.get()
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
                                     set_config.update(|c| c.data_path = value.clone());
@@ -337,7 +370,7 @@ pub fn ConfigForm(
                             <button
                                 type="button"
                                 class="browse-btn"
-                                disabled=move || is_running.get()
+                                disabled=move || can_stop.get() || action_busy.get()
                                 on:click=select_folder
                             >
                                 "Browse"
@@ -362,7 +395,7 @@ pub fn ConfigForm(
                                 min="1"
                                 max="65535"
                                 prop:value=move || port_input.get()
-                                disabled=move || is_running.get()
+                                disabled=move || can_stop.get() || action_busy.get()
                                 on:input=move |ev| validate_and_store_api_port(event_target_value(&ev))
                             />
                         </div>
@@ -373,7 +406,7 @@ pub fn ConfigForm(
                                 type="text"
                                 placeholder="127.0.0.1"
                                 prop:value=move || config.get().host.unwrap_or_default()
-                                disabled=move || is_running.get()
+                                disabled=move || can_stop.get() || action_busy.get()
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
                                     let host = if value.is_empty() { None } else { Some(value) };
@@ -384,12 +417,12 @@ pub fn ConfigForm(
                     </div>
 
                     <div class="runtime-toggle-row">
-                        <label class="toggle-card" class:disabled=move || is_running.get()>
+                        <label class="toggle-card" class:disabled=move || can_stop.get() || action_busy.get()>
                             <input
                                 id="console-enable"
                                 type="checkbox"
                                 prop:checked=move || config.get().console_enable
-                                disabled=move || is_running.get()
+                                disabled=move || can_stop.get() || action_busy.get()
                                 on:change=move |ev| {
                                     let checked = event_target_checked(&ev);
                                     set_config.update(|c| {
@@ -425,7 +458,7 @@ pub fn ConfigForm(
                                     min="1"
                                     max="65535"
                                     prop:value=move || console_port_input.get()
-                                    disabled=move || is_running.get()
+                                    disabled=move || can_stop.get() || action_busy.get()
                                     on:input=move |ev| {
                                         validate_and_store_console_port(event_target_value(&ev))
                                     }
@@ -462,7 +495,7 @@ pub fn ConfigForm(
                                 type="text"
                                 placeholder="Access key"
                                 prop:value=move || config.get().access_key.unwrap_or_default()
-                                disabled=move || is_running.get()
+                                disabled=move || can_stop.get() || action_busy.get()
                                 on:input=move |ev| {
                                     let value = event_target_value(&ev);
                                     let access_key = if value.is_empty() { None } else { Some(value) };
@@ -478,7 +511,7 @@ pub fn ConfigForm(
                                     type=move || if show_secret.get() { "text" } else { "password" }
                                     placeholder="Secret key"
                                     prop:value=move || config.get().secret_key.unwrap_or_default()
-                                    disabled=move || is_running.get()
+                                    disabled=move || can_stop.get() || action_busy.get()
                                     on:input=move |ev| {
                                         let value = event_target_value(&ev);
                                         let secret_key = if value.is_empty() { None } else { Some(value) };
@@ -488,7 +521,7 @@ pub fn ConfigForm(
                                 <button
                                     type="button"
                                     class="toggle-visibility"
-                                    disabled=move || is_running.get()
+                                    disabled=move || can_stop.get() || action_busy.get()
                                     aria-pressed=move || show_secret.get()
                                     aria-label=move || {
                                         if show_secret.get() {
@@ -498,7 +531,7 @@ pub fn ConfigForm(
                                         }
                                     }
                                     on:click=move |_| {
-                                        if !is_running.get() {
+                                        if !can_stop.get() && !action_busy.get() {
                                             set_show_secret.update(|show| *show = !*show);
                                         }
                                     }
@@ -525,6 +558,24 @@ pub fn ConfigForm(
                             </div>
                         </div>
                     </div>
+                    <Show when=move || {
+                        let current = config.get();
+                        crate::helpers::refuses_public_default_credentials(
+                            current.host.as_deref(),
+                            current.access_key.as_deref(),
+                            current.secret_key.as_deref(),
+                        )
+                    }>
+                        <div class="field-hint">
+                            {move || {
+                                let host = config
+                                    .get()
+                                    .host
+                                    .unwrap_or_else(|| DEFAULT_HOST.to_string());
+                                crate::helpers::public_default_credentials_message(&host)
+                            }}
+                        </div>
+                    </Show>
                 </section>
             </div>
 
@@ -532,25 +583,36 @@ pub fn ConfigForm(
                 <button
                     type="submit"
                     class="launch-btn"
-                    class:stop-btn=move || can_stop.get()
+                    class:stop-btn=move || {
+                        primary_action(
+                            can_stop.get(),
+                            action_busy.get(),
+                            config.get().data_path.trim().is_empty(),
+                        )
+                        .stops_service
+                    }
                     disabled=move || {
-                        config.get().data_path.is_empty() || (is_running.get() && !can_stop.get())
+                        primary_action(
+                            can_stop.get(),
+                            action_busy.get(),
+                            config.get().data_path.trim().is_empty(),
+                        )
+                        .disabled
                     }
                 >
                     {move || {
-                        if can_stop.get() {
-                            "Stop RustFS"
-                        } else if is_running.get() {
-                            "RustFS Running"
-                        } else {
-                            "Launch RustFS"
-                        }
+                        primary_action(
+                            can_stop.get(),
+                            action_busy.get(),
+                            config.get().data_path.trim().is_empty(),
+                        )
+                        .label
                     }}
                 </button>
 
                 <Show when=move || is_running.get() && !can_stop.get()>
                     <div class="field-hint">
-                        "The configured RustFS service is online, but this launcher is not managing that process."
+                        "Something is already listening on this host and port, but this launcher did not start it. Change the port, or stop that program, then launch."
                     </div>
                 </Show>
 

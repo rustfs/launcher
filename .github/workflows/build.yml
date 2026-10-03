@@ -270,6 +270,12 @@ jobs:
             --pattern "${{ steps.rustfs_asset.outputs.asset }}" \
             --dir . \
             --clobber
+          gh release download "${{ steps.upstream.outputs.tag }}" \
+            --repo rustfs/rustfs \
+            --pattern SHA256SUMS \
+            --dir . \
+            --clobber
+          bash scripts/verify-rustfs-checksum.sh SHA256SUMS "${{ steps.rustfs_asset.outputs.asset }}"
           unzip -q "${{ steps.rustfs_asset.outputs.asset }}" -d rustfs-temp
           if [ -f rustfs-temp/rustfs ]; then
             cp rustfs-temp/rustfs "${{ steps.rustfs_asset.outputs.dest }}"
@@ -279,7 +285,7 @@ jobs:
             exit 1
           fi
           chmod +x "${{ steps.rustfs_asset.outputs.dest }}"
-          rm -rf rustfs-temp "${{ steps.rustfs_asset.outputs.asset }}"
+          rm -rf rustfs-temp "${{ steps.rustfs_asset.outputs.asset }}" SHA256SUMS
 
       - name: Download RustFS binary (Windows)
         if: runner.os == 'Windows' && steps.rustfs_asset.outputs.available == 'true'
@@ -291,6 +297,9 @@ jobs:
           $Dest = "${{ steps.rustfs_asset.outputs.dest }}"
           New-Item -ItemType Directory -Force -Path src-tauri\binaries | Out-Null
           gh release download "${{ steps.upstream.outputs.tag }}" --repo rustfs/rustfs --pattern $AssetName --dir . --clobber
+          gh release download "${{ steps.upstream.outputs.tag }}" --repo rustfs/rustfs --pattern SHA256SUMS --dir . --clobber
+          bash scripts/verify-rustfs-checksum.sh SHA256SUMS $AssetName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Expand-Archive -Path $AssetName -DestinationPath "rustfs-temp" -Force
           if (Test-Path "rustfs-temp\rustfs.exe") {
             Copy-Item "rustfs-temp\rustfs.exe" -Destination $Dest
@@ -301,7 +310,7 @@ jobs:
             Get-ChildItem rustfs-temp
             exit 1
           }
-          Remove-Item -Recurse -Force rustfs-temp, $AssetName
+          Remove-Item -Recurse -Force rustfs-temp, $AssetName, SHA256SUMS
 
       - name: Skip unsupported platform
         if: steps.rustfs_asset.outputs.available != 'true'

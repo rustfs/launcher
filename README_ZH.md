@@ -71,7 +71,7 @@ RustFS 会把对象保存在你指定的文件夹里，并且要求这个文件�
 | **API Port** | S3 端点的端口。没有别的程序占用时，保持 `9000` 即可。 |
 | **Host** | 填 `127.0.0.1` 表示只在本机可用；填 `0.0.0.0` 则同一网络里的其他设备也能访问。 |
 | **Console Endpoint** | 想用 RustFS 的网页控制台就打开它，它使用单独的端口，默认 `9001`。 |
-| **Access Key** / **Secret Key** | S3 客户端使用的凭证，默认是 `rustfsadmin` / `rustfsadmin`。一旦服务对外可访问，请务必修改。 |
+| **Access Key** / **Secret Key** | S3 客户端使用的凭证，默认是 `rustfsadmin` / `rustfsadmin`，会和其他表单项一起被记住。主机不是本机回环地址时，启动器会拒绝启动，直到两项都改成非默认值；留空也会回落到这组公开凭证。 |
 
 填过的内容会被记住，下次启动点一下就行。
 
@@ -135,10 +135,10 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 | --- | --- |
 | Ready to Launch | 该端口上没有任何东西在运行。 |
 | Managed by Launcher | RustFS 由启动器拉起，也可以由它停止。 |
-| Detected Externally | 端口有响应，但进程不是这里启动的，比如你在终端里手动跑的 RustFS。这种情况下停止按钮不可用。 |
+| Detected Externally | 端口有响应，但进程不是这里启动的，比如你在终端里手动跑的 RustFS。表单仍可编辑，方便你改端口。停止按钮不可用，因为这个进程不归启动器管。 |
 
-**概览卡片。** API 和 Console 显示端口号，服务在线后点击即可在浏览器中打开。Mode 表示表单当前是可编辑
-（*Editable*）还是因服务运行而锁定（*Locked*）。
+**概览卡片。** API 和 Console 显示端口号，服务在线后点击即可在浏览器中打开。Mode 只在启动器自己拉起
+RustFS 时显示锁定（*Locked*）。检测到外部进程时，表单仍是可编辑（*Editable*）。
 
 **Version & Updates。** 显示启动器版本和内置的 RustFS 版本，需要时可以检查是否有新版本。
 

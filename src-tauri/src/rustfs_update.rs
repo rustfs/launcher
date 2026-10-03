@@ -119,6 +119,29 @@ fn asset_url(tag: &str, asset: &str) -> String {
     )
 }
 
+/// Release tags become a path segment on `github.com`. Only a single
+/// version-shaped token is accepted, so a compromised feed cannot inject
+/// extra path segments.
+pub(crate) fn validate_release_tag(tag: &str) -> Result<&str> {
+    let trimmed = tag.trim();
+    let body = trimmed.strip_prefix('v').unwrap_or(trimmed);
+    let token_ok = !body.is_empty()
+        && body.len() <= 64
+        && !body.starts_with('.')
+        && !body.ends_with('.')
+        && !body.contains("..")
+        && body
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '+' | '-'));
+    if token_ok {
+        Ok(trimmed)
+    } else {
+        Err(Error::RustFsUpdate(format!(
+            "Upstream version feed returned an invalid release tag: {trimmed}"
+        )))
+    }
+}
+
 /// Extracts the digest for `asset` out of a `sha256sum`-style manifest.
 pub(crate) fn digest_for_asset(manifest: &str, asset: &str) -> Option<String> {
     manifest.lines().find_map(|line| {
@@ -150,8 +173,8 @@ pub(crate) fn parse_latest_feed(body: &str) -> Result<FeedSnapshot> {
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
             Error::RustFsUpdate("Upstream version feed did not report a release tag".to_string())
-        })?
-        .to_string();
+        })?;
+    let tag = validate_release_tag(tag)?.to_string();
 
     Ok(FeedSnapshot { tag, release })
 }
@@ -408,12 +431,14 @@ pub(crate) fn smoke_test(path: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Replaces `target` with `staged`, keeping a rollback copy while doing so.
-/// Windows refuses to overwrite a file that is still mapped, so the previous
-/// binary is moved aside instead of deleted in place.
-fn swap_in_place(staged: &Path, target: &Path) -> Result<()> {
+/// Replaces `target` with `staged`. When `target` already existed, the previous
+/// bytes are left at `*.previous` so the caller can restore them if bookkeeping
+/// fails. Windows refuses to overwrite a file that is still mapped, so the
+/// previous binary is moved aside instead of deleted in place.
+fn swap_in_place(staged: &Path, target: &Path) -> Result<Option<PathBuf>> {
     if !target.exists() {
-        return std::fs::rename(staged, target).map_err(Error::Io);
+        std::fs::rename(staged, target).map_err(Error::Io)?;
+        return Ok(None);
     }
 
     let backup = target.with_extension("previous");
@@ -421,13 +446,31 @@ fn swap_in_place(staged: &Path, target: &Path) -> Result<()> {
     std::fs::rename(target, &backup).map_err(Error::Io)?;
 
     match std::fs::rename(staged, target) {
-        Ok(()) => {
-            let _ = std::fs::remove_file(&backup);
-            Ok(())
-        }
+        Ok(()) => Ok(Some(backup)),
         Err(error) => {
             let _ = std::fs::rename(&backup, target);
             Err(Error::Io(error))
+        }
+    }
+}
+
+fn discard_backup(backup: Option<PathBuf>) {
+    if let Some(path) = backup {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn restore_backup(backup: Option<PathBuf>, target: &Path) {
+    match backup {
+        Some(backup) => {
+            // Drop the swapped-in file before moving the previous binary back.
+            let _ = std::fs::remove_file(target);
+            if std::fs::rename(&backup, target).is_err() && std::fs::copy(&backup, target).is_ok() {
+                let _ = std::fs::remove_file(&backup);
+            }
+        }
+        None => {
+            let _ = std::fs::remove_file(target);
         }
     }
 }
@@ -464,9 +507,9 @@ pub(crate) fn commit_update(
     std::fs::create_dir_all(managed_dir).map_err(Error::Io)?;
     let binary_name = platform.binary_name();
     let target = managed_dir.join(binary_name);
-    swap_in_place(staged, &target)?;
+    let backup = swap_in_place(staged, &target)?;
 
-    binaries::write_record(
+    if let Err(error) = binaries::write_record(
         managed_dir,
         &InstalledRecord {
             version: version::normalize(tag).to_string(),
@@ -475,7 +518,11 @@ pub(crate) fn commit_update(
             sha256: sha256.to_ascii_lowercase(),
             installed_at: chrono::Utc::now().to_rfc3339(),
         },
-    )?;
+    ) {
+        restore_backup(backup, &target);
+        return Err(error);
+    }
+    discard_backup(backup);
 
     let installed = version::normalize(tag).to_string();
     Ok(if was_running {
@@ -560,9 +607,9 @@ pub async fn install() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_name, asset_url, commit_update, digest_for_asset, evaluate_update, extract_binary,
-        hash_file, parse_latest_feed, sha256_hex, smoke_test, stage_update, swap_in_place,
-        verify_sha256, FeedSnapshot, LatestRelease, Stage,
+        asset_name, asset_url, commit_update, digest_for_asset, discard_backup, evaluate_update,
+        extract_binary, hash_file, parse_latest_feed, sha256_hex, smoke_test, stage_update,
+        swap_in_place, validate_release_tag, verify_sha256, FeedSnapshot, LatestRelease, Stage,
     };
     use crate::binaries::{effective_version_from, installed_binary_from, EffectiveVersion};
     use crate::error::Error;
@@ -667,10 +714,13 @@ B34390D7CE5C1797B4A127261FEE1926C2AED1D280E1EC59F149F255902221AF *rustfs-windows
         std::fs::write(&target, b"old").unwrap();
         std::fs::write(&staged, b"new").unwrap();
 
-        swap_in_place(&staged, &target).unwrap();
+        let backup = swap_in_place(&staged, &target).unwrap();
 
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
         assert!(!staged.exists());
+        let backup = backup.expect("previous binary is kept until the caller discards it");
+        assert_eq!(std::fs::read(&backup).unwrap(), b"old");
+        discard_backup(Some(backup));
         assert!(!target.with_extension("previous").exists());
     }
 
@@ -709,6 +759,9 @@ B34390D7CE5C1797B4A127261FEE1926C2AED1D280E1EC59F149F255902221AF *rustfs-windows
 
         assert!(parse_latest_feed("not-json").is_err());
         assert!(parse_latest_feed(r#"{"tag":"","version":""}"#).is_err());
+        assert!(parse_latest_feed(r#"{"tag":"../1.0.0"}"#).is_err());
+        assert!(parse_latest_feed(r#"{"tag":"1.0.0/evil"}"#).is_err());
+        assert_eq!(validate_release_tag(" v1.0.1 ").unwrap(), "v1.0.1");
     }
 
     fn sample_feed(tag: &str, url: Option<&str>) -> FeedSnapshot {
@@ -871,6 +924,10 @@ B34390D7CE5C1797B4A127261FEE1926C2AED1D280E1EC59F149F255902221AF *rustfs-windows
         .unwrap();
         assert!(message.contains("1.0.0-rc.4"));
         assert!(message.contains("stopped"));
+        assert!(!managed
+            .join(platform.binary_name())
+            .with_extension("previous")
+            .exists());
 
         let (installed, record) = installed_binary_from(&managed, Some("1.0.0-rc.3"))
             .expect("install should be selected");
@@ -902,6 +959,55 @@ B34390D7CE5C1797B4A127261FEE1926C2AED1D280E1EC59F149F255902221AF *rustfs-windows
         assert!(crate::state::is_rustfs_process_running());
         crate::state::terminate_rustfs_process();
         assert!(!crate::state::is_rustfs_process_running());
+    }
+
+    #[test]
+    fn commit_update_restores_the_previous_binary_when_the_record_cannot_be_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let managed = dir.path().join("managed");
+        std::fs::create_dir_all(&managed).unwrap();
+        let platform = Platform::from_target("macos", "aarch64").unwrap();
+        let target = managed.join(platform.binary_name());
+        std::fs::write(&target, b"old").unwrap();
+        let staged = managed.join(format!("{}.staged", platform.binary_name()));
+        std::fs::write(&staged, b"new").unwrap();
+        // Renaming installed.json.tmp onto a directory fails on every platform.
+        std::fs::create_dir(managed.join("installed.json")).unwrap();
+
+        assert!(commit_update(
+            platform,
+            "1.0.0-rc.4",
+            "rustfs-macos-aarch64-v1.0.0-rc.4.zip",
+            &"ab".repeat(32),
+            &staged,
+            &managed,
+            false,
+        )
+        .is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"old");
+    }
+
+    #[test]
+    fn commit_update_removes_a_first_install_when_the_record_cannot_be_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let managed = dir.path().join("managed");
+        std::fs::create_dir_all(&managed).unwrap();
+        let platform = Platform::from_target("windows", "x86_64").unwrap();
+        let staged = managed.join(format!("{}.staged", platform.binary_name()));
+        std::fs::write(&staged, b"new").unwrap();
+        std::fs::create_dir(managed.join("installed.json")).unwrap();
+
+        assert!(commit_update(
+            platform,
+            "1.0.1",
+            "rustfs-windows-x86_64-v1.0.1.zip",
+            &"cd".repeat(32),
+            &staged,
+            &managed,
+            false,
+        )
+        .is_err());
+        assert!(!managed.join(platform.binary_name()).exists());
     }
 
     #[test]

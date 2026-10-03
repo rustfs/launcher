@@ -24,6 +24,13 @@ fn focus_main_window(app: &tauri::AppHandle) {
     }
 }
 
+/// A minimized window still reports itself as visible. Clicking the tray in
+/// that state should restore it; hiding it is only for a window the user can
+/// already see.
+fn tray_click_should_show(visible: bool, minimized: bool) -> bool {
+    !visible || minimized
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -80,10 +87,12 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
+                            let visible = window.is_visible().unwrap_or(false);
+                            let minimized = window.is_minimized().unwrap_or(false);
+                            if tray_click_should_show(visible, minimized) {
                                 focus_main_window(app);
+                            } else {
+                                let _ = window.hide();
                             }
                         }
                     }
@@ -136,4 +145,16 @@ pub fn run() {
                 let _ = app_handle;
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tray_click_should_show;
+
+    #[test]
+    fn tray_click_restores_a_hidden_or_minimized_window() {
+        assert!(tray_click_should_show(false, false));
+        assert!(tray_click_should_show(true, true));
+        assert!(!tray_click_should_show(true, false));
+    }
 }

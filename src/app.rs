@@ -1,7 +1,10 @@
 use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
-use crate::helpers::{display_host, progress_percent, rustfs_idle_message, rustfs_source_label};
+use crate::helpers::{
+    display_host, primary_action, progress_percent, rustfs_idle_message, rustfs_source_label,
+    status_poll_is_current,
+};
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
     RustFsUpdateInfo, UpdateInfo, APP_LOG_CAPACITY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT,
@@ -96,6 +99,14 @@ fn apply_progress_payload(payload: &JsValue, set_progress: WriteSignal<Option<u3
     }
 }
 
+fn default_access_key() -> Option<String> {
+    Some(crate::types::DEFAULT_ACCESS_KEY.to_string())
+}
+
+fn default_secret_key() -> Option<String> {
+    Some(crate::types::DEFAULT_SECRET_KEY.to_string())
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PersistedConfig {
     data_path: String,
@@ -103,6 +114,12 @@ struct PersistedConfig {
     console_port: Option<u16>,
     host: Option<String>,
     console_enable: bool,
+    // Saved with the rest of the form. Omitting them made every restart fall
+    // back to the published rustfsadmin pair, even after the user changed it.
+    #[serde(default = "default_access_key")]
+    access_key: Option<String>,
+    #[serde(default = "default_secret_key")]
+    secret_key: Option<String>,
 }
 
 impl From<&RustFsConfig> for PersistedConfig {
@@ -113,6 +130,8 @@ impl From<&RustFsConfig> for PersistedConfig {
             console_port: config.console_port,
             host: config.host.clone(),
             console_enable: config.console_enable,
+            access_key: config.access_key.clone(),
+            secret_key: config.secret_key.clone(),
         }
     }
 }
@@ -125,7 +144,8 @@ impl From<PersistedConfig> for RustFsConfig {
             console_port: config.console_port,
             host: config.host,
             console_enable: config.console_enable,
-            ..RustFsConfig::default()
+            access_key: config.access_key,
+            secret_key: config.secret_key,
         }
     }
 }
@@ -169,6 +189,15 @@ const CONSOLE_UI_PATH: &str = "/rustfs/console/";
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 static HEALTH_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 static UPDATE_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
+static STATUS_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn current_status_generation() -> u64 {
+    STATUS_GENERATION.load(Ordering::SeqCst)
+}
+
+fn invalidate_status_polls() {
+    STATUS_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
 
 fn next_log_id() -> u64 {
     NEXT_LOG_ID.fetch_add(1, Ordering::Relaxed)
@@ -196,6 +225,7 @@ fn sync_runtime_status(
     set_can_stop: WriteSignal<bool>,
     set_service_status: WriteSignal<bool>,
 ) {
+    let generation = current_status_generation();
     spawn_local(async move {
         if !is_tauri() {
             set_is_running.set(false);
@@ -212,17 +242,19 @@ fn sync_runtime_status(
         set_js_field(&status_args, "host", host);
         set_js_field(&status_args, "port", port);
 
-        let (managed_running, service_online) =
-            match tauri_invoke("get_runtime_status", status_args.into()).await {
-                Ok(value) => serde_wasm_bindgen::from_value::<RuntimeStatus>(value)
-                    .map(|status| (status.managed_running, status.service_online))
-                    .unwrap_or((false, false)),
-                Err(_) => (false, false),
-            };
+        let Ok(value) = tauri_invoke("get_runtime_status", status_args.into()).await else {
+            return;
+        };
+        let Ok(status) = serde_wasm_bindgen::from_value::<RuntimeStatus>(value) else {
+            return;
+        };
+        if !status_poll_is_current(generation, current_status_generation()) {
+            return;
+        }
 
-        set_service_status.set(service_online);
-        set_can_stop.set(managed_running);
-        set_is_running.set(managed_running || service_online);
+        set_service_status.set(status.service_online);
+        set_can_stop.set(status.managed_running);
+        set_is_running.set(status.managed_running || status.service_online);
     });
 }
 
@@ -241,6 +273,7 @@ pub fn App() -> impl IntoView {
     let (current_log_type, set_current_log_type) = signal(LogType::App);
     let (service_status, set_service_status) = signal(false);
     let (can_stop, set_can_stop) = signal(false);
+    let (action_busy, set_action_busy) = signal(false);
     let (version_info, set_version_info) = signal(None::<AppVersionInfo>);
     let (update_info, set_update_info) = signal(None::<UpdateInfo>);
     let (rustfs_update_info, set_rustfs_update_info) = signal(None::<RustFsUpdateInfo>);
@@ -350,6 +383,8 @@ pub fn App() -> impl IntoView {
                     set_is_running.set(false);
                     set_can_stop.set(false);
                     set_service_status.set(false);
+                    invalidate_status_polls();
+                    sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
                     show_toast(
                         format!("RustFS exited with code: {}", exit_code),
                         ToastType::Error,
@@ -441,10 +476,18 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    let settle_runtime = move || {
+        invalidate_status_polls();
+        sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
+    };
+
     let launch_rustfs = move |ev: SubmitEvent| {
         ev.prevent_default();
-        set_is_running.set(true);
-        set_can_stop.set(true);
+        if action_busy.get_untracked() {
+            return;
+        }
+        invalidate_status_polls();
+        set_action_busy.set(true);
         show_toast("Launching RustFS...".to_string(), ToastType::Info);
 
         let now = js_sys::Date::new_0().to_locale_time_string("en-US");
@@ -477,6 +520,7 @@ pub fn App() -> impl IntoView {
                 );
                 set_is_running.set(false);
                 set_can_stop.set(false);
+                set_action_busy.set(false);
                 return;
             }
 
@@ -513,6 +557,8 @@ pub fn App() -> impl IntoView {
                 );
                 set_is_running.set(false);
                 set_can_stop.set(false);
+                set_action_busy.set(false);
+                settle_runtime();
                 return;
             }
 
@@ -535,6 +581,9 @@ pub fn App() -> impl IntoView {
                             );
 
                             if success {
+                                set_is_running.set(true);
+                                set_can_stop.set(true);
+                                set_action_busy.set(false);
                                 show_toast(
                                     "RustFS launched successfully!".to_string(),
                                     ToastType::Success,
@@ -555,7 +604,9 @@ pub fn App() -> impl IntoView {
                                 );
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
+                                set_action_busy.set(false);
                             }
+                            settle_runtime();
                         }
                         Err(_) => {
                             show_toast(
@@ -570,6 +621,8 @@ pub fn App() -> impl IntoView {
                             );
                             set_is_running.set(false);
                             set_can_stop.set(false);
+                            set_action_busy.set(false);
+                            settle_runtime();
                         }
                     }
                 }
@@ -583,12 +636,19 @@ pub fn App() -> impl IntoView {
                     );
                     set_is_running.set(false);
                     set_can_stop.set(false);
+                    set_action_busy.set(false);
+                    settle_runtime();
                 }
             }
         });
     };
 
     let stop_rustfs = move |_| {
+        if action_busy.get_untracked() {
+            return;
+        }
+        invalidate_status_polls();
+        set_action_busy.set(true);
         show_toast("Stopping RustFS...".to_string(), ToastType::Info);
         push_log(
             set_app_logs,
@@ -605,6 +665,8 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
                                 set_service_status.set(false);
+                                set_action_busy.set(false);
+                                settle_runtime();
                                 show_toast("RustFS stopped".to_string(), ToastType::Success);
                                 push_log(
                                     set_app_logs,
@@ -612,6 +674,8 @@ pub fn App() -> impl IntoView {
                                     APP_LOG_CAPACITY,
                                 );
                             } else {
+                                set_action_busy.set(false);
+                                settle_runtime();
                                 show_toast(
                                     format!("Failed to stop: {}", res.message),
                                     ToastType::Error,
@@ -624,6 +688,8 @@ pub fn App() -> impl IntoView {
                             }
                         }
                         Err(_) => {
+                            set_action_busy.set(false);
+                            settle_runtime();
                             show_toast(
                                 "Failed to parse stop response".to_string(),
                                 ToastType::Error,
@@ -632,6 +698,8 @@ pub fn App() -> impl IntoView {
                     }
                 }
                 Err(err) => {
+                    set_action_busy.set(false);
+                    settle_runtime();
                     show_toast(js_error_message(err), ToastType::Error);
                 }
             }
@@ -751,11 +819,7 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        let rustfs_running = update_info
-            .get_untracked()
-            .map(|info| info.rustfs_running)
-            .unwrap_or(false);
-        if rustfs_running
+        if can_stop.get_untracked()
             && !confirm_action(
                 "Updating the launcher stops the RustFS service it manages and restarts the app once the update is installed. Continue?",
             )
@@ -797,11 +861,7 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        let rustfs_running = rustfs_update_info
-            .get_untracked()
-            .map(|info| info.rustfs_running)
-            .unwrap_or(false);
-        if rustfs_running
+        if can_stop.get_untracked()
             && !confirm_action(
                 "Updating RustFS stops the service managed by this launcher. Launch it again afterwards to use the new build. Continue?",
             )
@@ -964,7 +1024,7 @@ pub fn App() -> impl IntoView {
                     </button>
                     <div class="summary-card">
                         <span class="summary-label">"Mode"</span>
-                        <strong>{move || if is_running.get() { "Locked" } else { "Editable" }}</strong>
+                        <strong>{move || if primary_action(can_stop.get(), action_busy.get(), false).lock_form { "Locked" } else { "Editable" }}</strong>
                     </div>
                 </div>
 
@@ -1089,6 +1149,7 @@ pub fn App() -> impl IntoView {
                     set_config=set_config
                     is_running=is_running
                     can_stop=can_stop
+                    action_busy=action_busy
                     on_launch=Callback::new(launch_rustfs)
                     on_stop=Callback::new(stop_rustfs)
                 />
@@ -1105,5 +1166,36 @@ pub fn App() -> impl IntoView {
                 />
             </div>
         </main>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PersistedConfig, RustFsConfig};
+    use crate::types::{DEFAULT_ACCESS_KEY, DEFAULT_SECRET_KEY};
+
+    #[test]
+    fn persisted_config_keeps_custom_credentials() {
+        let config = RustFsConfig {
+            data_path: "/data".into(),
+            access_key: Some("custom-ak".into()),
+            secret_key: Some("custom-sk".into()),
+            ..RustFsConfig::default()
+        };
+        let json = serde_json::to_string(&PersistedConfig::from(&config)).unwrap();
+        let loaded = RustFsConfig::from(serde_json::from_str::<PersistedConfig>(&json).unwrap());
+        assert_eq!(loaded.access_key.as_deref(), Some("custom-ak"));
+        assert_eq!(loaded.secret_key.as_deref(), Some("custom-sk"));
+        assert_eq!(loaded.data_path, "/data");
+    }
+
+    #[test]
+    fn older_saved_config_without_credentials_still_loads() {
+        let legacy = r#"{"data_path":"/data","port":9000,"console_port":9001,"host":"127.0.0.1","console_enable":true}"#;
+        let loaded = RustFsConfig::from(serde_json::from_str::<PersistedConfig>(legacy).unwrap());
+        assert_eq!(loaded.data_path, "/data");
+        assert!(loaded.console_enable);
+        assert_eq!(loaded.access_key.as_deref(), Some(DEFAULT_ACCESS_KEY));
+        assert_eq!(loaded.secret_key.as_deref(), Some(DEFAULT_SECRET_KEY));
     }
 }

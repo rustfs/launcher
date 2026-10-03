@@ -99,8 +99,52 @@ pub(crate) fn binary_candidates(
         push_candidate(cwd.join("binaries").join(binary_name));
     }
 
-    push_candidate(PathBuf::from("src-tauri/binaries").join(binary_name));
     candidates
+}
+
+/// Working directory and `RUSTFS_BINARY_DIR` are development fallbacks.
+/// Installed builds must not consult them: both are controlled by whoever
+/// launches the process, so a missing bundled binary would otherwise run a
+/// planted file.
+pub(crate) fn unbundled_search_dirs(allow_dev_paths: bool) -> (Option<PathBuf>, Option<PathBuf>) {
+    if !allow_dev_paths {
+        return (None, None);
+    }
+    (
+        std::env::current_dir().ok(),
+        std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from),
+    )
+}
+
+fn credential_is_published_default(value: Option<&str>, default: &str) -> bool {
+    match value.map(str::trim).filter(|item| !item.is_empty()) {
+        // RustFS substitutes rustfsadmin when the variable is unset.
+        None => true,
+        Some(value) => value == default,
+    }
+}
+
+pub(crate) fn falls_back_to_published_credentials(config: &RustFsConfig) -> bool {
+    credential_is_published_default(
+        config.access_key.as_deref(),
+        crate::config::DEFAULT_ACCESS_KEY,
+    ) || credential_is_published_default(
+        config.secret_key.as_deref(),
+        crate::config::DEFAULT_SECRET_KEY,
+    )
+}
+
+pub(crate) fn validate_config_for_launch(config: &RustFsConfig) -> Result<()> {
+    let host =
+        crate::network::validate_bind_host(config.bind_host()).map_err(Error::InvalidHost)?;
+    if !crate::network::is_loopback_host(host) && falls_back_to_published_credentials(config) {
+        return Err(Error::InsecureBind(host.to_string()));
+    }
+    resolve_data_path(&config.data_path)?;
+    if config.console_enable && config.api_port() == config.console_port() {
+        return Err(Error::PortConflict);
+    }
+    Ok(())
 }
 
 fn resource_dir_from_app() -> Option<PathBuf> {
@@ -167,8 +211,7 @@ fn get_binary_path() -> Result<PathBuf> {
         ))
     })?;
     let binary_name = binaries::binary_name()?;
-    let env_dir = std::env::var_os("RUSTFS_BINARY_DIR").map(PathBuf::from);
-    let cwd = std::env::current_dir().ok();
+    let (cwd, env_dir) = unbundled_search_dirs(cfg!(debug_assertions));
     let resource_dir = resource_dir_from_app();
 
     resolve_runtime_binary(
@@ -333,6 +376,7 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
         config.data_path, config.port, config.host
     ));
 
+    validate_config_for_launch(&config)?;
     let data_path = resolve_data_path(&config.data_path)?;
     let mut config = config;
     config.data_path = data_path.to_string_lossy().into_owned();
@@ -343,10 +387,6 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
 
     let api_port = config.api_port();
     let console_port = config.console_port();
-
-    if config.console_enable && api_port == console_port {
-        return Err(Error::PortConflict);
-    }
 
     if !is_port_available(config.bind_host(), api_port) {
         return Err(Error::PortInUse(api_port));
@@ -366,7 +406,15 @@ pub fn launch(config: RustFsConfig) -> Result<String> {
         "Creating logs directory at: {}",
         logs_dir.display()
     ));
-    std::fs::create_dir_all(&logs_dir).map_err(Error::Io)?;
+    std::fs::create_dir_all(&logs_dir).map_err(|error| {
+        Error::Io(std::io::Error::new(
+            error.kind(),
+            format!(
+                "could not create the log directory {}: {error}. Choose a data folder whose parent directory is writable",
+                logs_dir.display()
+            ),
+        ))
+    })?;
 
     let plan = build_launch_plan(&config, &logs_dir);
     let mut cmd = Command::new(&binary_path);
@@ -520,6 +568,20 @@ mod tests {
     }
 
     #[test]
+    fn bundled_search_ignores_the_working_directory_unless_it_is_passed_in() {
+        let exe_dir = PathBuf::from("/Applications/RustFS Launcher.app/Contents/MacOS");
+        let candidates = binary_candidates(&exe_dir, None, None, None, "rustfs-macos-aarch64");
+        assert!(candidates.iter().all(|path| path.starts_with(&exe_dir)));
+        assert!(candidates
+            .iter()
+            .all(|path| !path.ends_with("src-tauri/binaries/rustfs-macos-aarch64")));
+
+        let (cwd, env_dir) = unbundled_search_dirs(false);
+        assert!(cwd.is_none());
+        assert!(env_dir.is_none());
+    }
+
+    #[test]
     fn resolve_runtime_binary_prefers_an_installed_file() {
         let dir = tempfile::tempdir().unwrap();
         let installed = dir.path().join("installed");
@@ -637,6 +699,61 @@ mod tests {
         assert!(matches!(
             ensure_executable(dir.path()),
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::InvalidInput
+        ));
+    }
+
+    #[test]
+    fn launch_rejects_public_binds_that_would_use_published_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let defaults = RustFsConfig {
+            data_path: dir.path().to_string_lossy().into_owned(),
+            host: Some("0.0.0.0".into()),
+            ..RustFsConfig::default()
+        };
+        let error = validate_config_for_launch(&defaults).unwrap_err();
+        assert!(matches!(error, Error::InsecureBind(_)));
+        assert!(error.to_string().contains("0.0.0.0"));
+        assert!(error.to_string().contains("unique access key"));
+
+        let cleared = RustFsConfig {
+            access_key: None,
+            secret_key: None,
+            ..defaults
+        };
+        assert!(matches!(
+            validate_config_for_launch(&cleared),
+            Err(Error::InsecureBind(_))
+        ));
+
+        let unique = RustFsConfig {
+            data_path: dir.path().to_string_lossy().into_owned(),
+            host: Some("0.0.0.0".into()),
+            access_key: Some("ak-unique".into()),
+            secret_key: Some("sk-unique-value".into()),
+            console_enable: false,
+            ..RustFsConfig::default()
+        };
+        assert!(validate_config_for_launch(&unique).is_ok());
+
+        let loopback = RustFsConfig {
+            data_path: dir.path().to_string_lossy().into_owned(),
+            host: Some("localhost".into()),
+            ..RustFsConfig::default()
+        };
+        assert!(validate_config_for_launch(&loopback).is_ok());
+    }
+
+    #[test]
+    fn launch_rejects_hosts_that_cannot_be_bound_or_opened() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = RustFsConfig {
+            data_path: dir.path().to_string_lossy().into_owned(),
+            host: Some("127.0.0.1\n--help".into()),
+            ..RustFsConfig::default()
+        };
+        assert!(matches!(
+            launch(config),
+            Err(Error::InvalidHost(host)) if host.contains("127.0.0.1")
         ));
     }
 
