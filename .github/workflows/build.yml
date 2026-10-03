@@ -285,6 +285,7 @@ jobs:
             exit 1
           fi
           chmod +x "${{ steps.rustfs_asset.outputs.dest }}"
+          bash scripts/prepare-macos-rustfs.sh "${{ steps.rustfs_asset.outputs.dest }}"
           rm -rf rustfs-temp "${{ steps.rustfs_asset.outputs.asset }}" SHA256SUMS
 
       - name: Download RustFS binary (Windows)
@@ -361,8 +362,25 @@ jobs:
             exit 1
           fi
 
+          bundled_rustfs=$(find "$APP_DIR" -type f \( -name 'rustfs-macos-aarch64' -o -name 'rustfs-macos-x86_64' \) -print -quit)
+          if [[ -z "$bundled_rustfs" ]]; then
+            echo "❌ bundled RustFS binary not found inside $APP_DIR"
+            find "$APP_DIR" -type f | head -80
+            exit 1
+          fi
+
+          # Sign vendored libraries before the bundle seal. `--deep` alone does
+          # not reliably sign Mach-O files under Contents/Resources.
+          if [[ -d "$APP_DIR/Contents/Resources/binaries" ]]; then
+            while IFS= read -r -d '' macho; do
+              if python3 scripts/macos_macho.py is-macho "$macho"; then
+                codesign --force --sign - "$macho"
+              fi
+            done < <(find "$APP_DIR/Contents/Resources/binaries" -type f -print0)
+          fi
           codesign --force --deep --sign - "$APP_DIR"
           codesign --verify --deep --strict --verbose=4 "$APP_DIR"
+          bash scripts/verify-macos-rustfs-bundle.sh "$bundled_rustfs"
 
           # Rebuild the updater after signing the app so the archive contains
           # the exact bundle that users will install.
