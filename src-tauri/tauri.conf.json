@@ -34,7 +34,14 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "RustFS, Inc.",
+    "copyright": "Copyright © 2024-2026 RustFS, Inc.",
     "targets": ["app", "dmg", "nsis"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    },
     "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",

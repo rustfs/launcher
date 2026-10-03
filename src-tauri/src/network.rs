@@ -63,8 +63,18 @@ fn any_tcp_online(addrs: impl IntoIterator<Item = SocketAddr>, timeout: Duration
         .any(|addr| TcpStream::connect_timeout(&addr, timeout).is_ok())
 }
 
+/// Address used to see whether a bind address is accepting connections.
+/// `0.0.0.0` and `::` listen on every interface, but connecting to them fails.
+pub(crate) fn probe_host(host: &str) -> &str {
+    match normalize_host(host) {
+        "0.0.0.0" | "*" => "127.0.0.1",
+        "::" => "::1",
+        host => host,
+    }
+}
+
 pub(crate) fn tcp_online(host: &str, port: u16) -> bool {
-    resolve_socket_addrs(host, port)
+    resolve_socket_addrs(probe_host(host), port)
         .map(|addrs| any_tcp_online(addrs, CONNECT_TIMEOUT))
         .unwrap_or(false)
 }
@@ -122,6 +132,23 @@ mod tests {
     fn invalid_hosts_are_offline_and_unavailable() {
         assert!(!tcp_online("[invalid", 9));
         assert!(!is_port_available("[invalid", 9));
+    }
+
+    #[test]
+    fn unspecified_binds_are_probed_through_loopback() {
+        assert_eq!(probe_host("0.0.0.0"), "127.0.0.1");
+        assert_eq!(probe_host(" * "), "127.0.0.1");
+        assert_eq!(probe_host("::"), "::1");
+        assert_eq!(probe_host("[::]"), "::1");
+        assert_eq!(probe_host("192.168.1.9"), "192.168.1.9");
+        assert_eq!(probe_host("[::1]"), "::1");
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(
+            tcp_online("0.0.0.0", port),
+            "a wildcard bind must be checked via loopback, not by connecting to 0.0.0.0"
+        );
     }
 
     #[test]

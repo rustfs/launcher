@@ -71,6 +71,13 @@ pub fn rustfs_idle_message(notes: Option<&str>) -> String {
 
 /// Percent for the update progress bar. Accepts both the camelCase fields
 /// emitted by serde and the snake_case names the older listener used.
+/// A status poll is stale once launch, stop, or process exit moves the
+/// generation forward. Applying the old result would unlock the form while
+/// RustFS is still starting, or mark it running after it has already exited.
+pub fn status_poll_is_current(captured: u64, generation: u64) -> bool {
+    captured == generation
+}
+
 pub fn progress_percent(downloaded: f64, content_length: Option<f64>) -> Option<u32> {
     let total = content_length.filter(|total| *total > 0.0)?;
     if !downloaded.is_finite() || downloaded < 0.0 {
@@ -84,6 +91,7 @@ mod tests {
     use super::{
         display_host, progress_percent, public_default_credentials_message,
         refuses_public_default_credentials, rustfs_idle_message, rustfs_source_label,
+        status_poll_is_current,
     };
 
     #[test]
@@ -109,6 +117,12 @@ mod tests {
         );
         assert_eq!(rustfs_idle_message(Some("  ")), "RustFS is up to date.");
         assert_eq!(rustfs_idle_message(None), "RustFS is up to date.");
+    }
+
+    #[test]
+    fn a_newer_runtime_operation_discards_an_older_status_poll() {
+        assert!(status_poll_is_current(4, 4));
+        assert!(!status_poll_is_current(4, 5));
     }
 
     #[test]

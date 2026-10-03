@@ -1,7 +1,10 @@
 use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
-use crate::helpers::{display_host, progress_percent, rustfs_idle_message, rustfs_source_label};
+use crate::helpers::{
+    display_host, progress_percent, rustfs_idle_message, rustfs_source_label,
+    status_poll_is_current,
+};
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
     RustFsUpdateInfo, UpdateInfo, APP_LOG_CAPACITY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT,
@@ -186,6 +189,15 @@ const CONSOLE_UI_PATH: &str = "/rustfs/console/";
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 static HEALTH_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 static UPDATE_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
+static STATUS_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn current_status_generation() -> u64 {
+    STATUS_GENERATION.load(Ordering::SeqCst)
+}
+
+fn invalidate_status_polls() {
+    STATUS_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
 
 fn next_log_id() -> u64 {
     NEXT_LOG_ID.fetch_add(1, Ordering::Relaxed)
@@ -213,6 +225,7 @@ fn sync_runtime_status(
     set_can_stop: WriteSignal<bool>,
     set_service_status: WriteSignal<bool>,
 ) {
+    let generation = current_status_generation();
     spawn_local(async move {
         if !is_tauri() {
             set_is_running.set(false);
@@ -229,17 +242,19 @@ fn sync_runtime_status(
         set_js_field(&status_args, "host", host);
         set_js_field(&status_args, "port", port);
 
-        let (managed_running, service_online) =
-            match tauri_invoke("get_runtime_status", status_args.into()).await {
-                Ok(value) => serde_wasm_bindgen::from_value::<RuntimeStatus>(value)
-                    .map(|status| (status.managed_running, status.service_online))
-                    .unwrap_or((false, false)),
-                Err(_) => (false, false),
-            };
+        let Ok(value) = tauri_invoke("get_runtime_status", status_args.into()).await else {
+            return;
+        };
+        let Ok(status) = serde_wasm_bindgen::from_value::<RuntimeStatus>(value) else {
+            return;
+        };
+        if !status_poll_is_current(generation, current_status_generation()) {
+            return;
+        }
 
-        set_service_status.set(service_online);
-        set_can_stop.set(managed_running);
-        set_is_running.set(managed_running || service_online);
+        set_service_status.set(status.service_online);
+        set_can_stop.set(status.managed_running);
+        set_is_running.set(status.managed_running || status.service_online);
     });
 }
 
@@ -367,6 +382,8 @@ pub fn App() -> impl IntoView {
                     set_is_running.set(false);
                     set_can_stop.set(false);
                     set_service_status.set(false);
+                    invalidate_status_polls();
+                    sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
                     show_toast(
                         format!("RustFS exited with code: {}", exit_code),
                         ToastType::Error,
@@ -458,8 +475,14 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    let settle_runtime = move || {
+        invalidate_status_polls();
+        sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
+    };
+
     let launch_rustfs = move |ev: SubmitEvent| {
         ev.prevent_default();
+        invalidate_status_polls();
         set_is_running.set(true);
         set_can_stop.set(true);
         show_toast("Launching RustFS...".to_string(), ToastType::Info);
@@ -530,6 +553,7 @@ pub fn App() -> impl IntoView {
                 );
                 set_is_running.set(false);
                 set_can_stop.set(false);
+                settle_runtime();
                 return;
             }
 
@@ -552,6 +576,8 @@ pub fn App() -> impl IntoView {
                             );
 
                             if success {
+                                set_is_running.set(true);
+                                set_can_stop.set(true);
                                 show_toast(
                                     "RustFS launched successfully!".to_string(),
                                     ToastType::Success,
@@ -573,6 +599,7 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
                             }
+                            settle_runtime();
                         }
                         Err(_) => {
                             show_toast(
@@ -587,6 +614,7 @@ pub fn App() -> impl IntoView {
                             );
                             set_is_running.set(false);
                             set_can_stop.set(false);
+                            settle_runtime();
                         }
                     }
                 }
@@ -600,12 +628,14 @@ pub fn App() -> impl IntoView {
                     );
                     set_is_running.set(false);
                     set_can_stop.set(false);
+                    settle_runtime();
                 }
             }
         });
     };
 
     let stop_rustfs = move |_| {
+        invalidate_status_polls();
         show_toast("Stopping RustFS...".to_string(), ToastType::Info);
         push_log(
             set_app_logs,
@@ -622,6 +652,7 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
                                 set_service_status.set(false);
+                                settle_runtime();
                                 show_toast("RustFS stopped".to_string(), ToastType::Success);
                                 push_log(
                                     set_app_logs,
@@ -629,6 +660,7 @@ pub fn App() -> impl IntoView {
                                     APP_LOG_CAPACITY,
                                 );
                             } else {
+                                settle_runtime();
                                 show_toast(
                                     format!("Failed to stop: {}", res.message),
                                     ToastType::Error,
@@ -641,6 +673,7 @@ pub fn App() -> impl IntoView {
                             }
                         }
                         Err(_) => {
+                            settle_runtime();
                             show_toast(
                                 "Failed to parse stop response".to_string(),
                                 ToastType::Error,
@@ -649,6 +682,7 @@ pub fn App() -> impl IntoView {
                     }
                 }
                 Err(err) => {
+                    settle_runtime();
                     show_toast(js_error_message(err), ToastType::Error);
                 }
             }
@@ -768,11 +802,7 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        let rustfs_running = update_info
-            .get_untracked()
-            .map(|info| info.rustfs_running)
-            .unwrap_or(false);
-        if rustfs_running
+        if can_stop.get_untracked()
             && !confirm_action(
                 "Updating the launcher stops the RustFS service it manages and restarts the app once the update is installed. Continue?",
             )
@@ -814,11 +844,7 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        let rustfs_running = rustfs_update_info
-            .get_untracked()
-            .map(|info| info.rustfs_running)
-            .unwrap_or(false);
-        if rustfs_running
+        if can_stop.get_untracked()
             && !confirm_action(
                 "Updating RustFS stops the service managed by this launcher. Launch it again afterwards to use the new build. Continue?",
             )
