@@ -62,6 +62,28 @@ pub fn write_record(dir: &Path, record: &InstalledRecord) -> Result<()> {
     std::fs::rename(&tmp, dest).map_err(Error::Io)
 }
 
+/// A record may only name a file directly inside the managed directory.
+/// `installed.json` is user-writable, so a `binary` value with a separator,
+/// a drive prefix, or `..` would otherwise escape that directory.
+pub(crate) fn is_managed_binary_name(name: &str) -> bool {
+    let path = Path::new(name);
+    !name.is_empty()
+        && name.len() <= 128
+        && !name.contains(['/', '\\', '\0', ':'])
+        && path.components().count() == 1
+        && path.file_name().and_then(|component| component.to_str()) == Some(name)
+}
+
+fn file_is_directly_inside(dir: &Path, path: &Path) -> bool {
+    let Ok(dir) = dir.canonicalize() else {
+        return false;
+    };
+    let Ok(path) = path.canonicalize() else {
+        return false;
+    };
+    path.parent() == Some(dir.as_path())
+}
+
 /// User-installed binary to run, when it exists and is not older than the
 /// bundled copy.
 pub fn installed_binary_from(
@@ -72,9 +94,12 @@ pub fn installed_binary_from(
     if !version::prefer_installed(&record.version, bundled) {
         return None;
     }
+    if !is_managed_binary_name(&record.binary) {
+        return None;
+    }
 
     let path = dir.join(&record.binary);
-    path.is_file().then_some((path, record))
+    (path.is_file() && file_is_directly_inside(dir, &path)).then_some((path, record))
 }
 
 pub fn installed_binary() -> Option<(PathBuf, InstalledRecord)> {
@@ -200,5 +225,41 @@ mod tests {
         let bundled = effective_version_from(Some(dir.path()), Some("1.0.0"));
         assert_eq!(bundled.version, "1.0.0");
         assert!(!bundled.managed);
+    }
+
+    #[test]
+    fn installed_binary_rejects_names_that_escape_the_managed_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let managed = dir.path().join("managed");
+        std::fs::create_dir(&managed).unwrap();
+        let outside = dir.path().join("escape-binary");
+        std::fs::write(&outside, b"payload").unwrap();
+
+        write_record(&managed, &sample_record("9.0.0", "../escape-binary")).unwrap();
+        assert!(installed_binary_from(&managed, None).is_none());
+
+        write_record(
+            &managed,
+            &sample_record("9.0.0", outside.to_str().expect("utf8 path")),
+        )
+        .unwrap();
+        assert!(
+            installed_binary_from(&managed, None).is_none(),
+            "an absolute binary path must not be executed"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_binary_rejects_a_symlink_that_leaves_the_managed_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let managed = dir.path().join("managed");
+        std::fs::create_dir(&managed).unwrap();
+        let outside = dir.path().join("outside-target");
+        std::fs::write(&outside, b"payload").unwrap();
+        std::os::unix::fs::symlink(&outside, managed.join("rustfs-macos-aarch64")).unwrap();
+
+        write_record(&managed, &sample_record("9.0.0", "rustfs-macos-aarch64")).unwrap();
+        assert!(installed_binary_from(&managed, None).is_none());
     }
 }

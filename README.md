@@ -78,7 +78,7 @@ example.
 | **API Port** | The S3 endpoint port. `9000` unless something else on your PC already uses it. |
 | **Host** | `127.0.0.1` keeps the server private to this computer. Use `0.0.0.0` to let other machines on your network reach it. |
 | **Console Endpoint** | Turn this on if you want the RustFS web console. It runs on its own port, `9001` by default. |
-| **Access Key** / **Secret Key** | The credentials your S3 client will use. They default to `rustfsadmin` / `rustfsadmin`, so change them if the server is reachable from outside your machine. |
+| **Access Key** / **Secret Key** | The credentials your S3 client will use. They default to `rustfsadmin` / `rustfsadmin` and are remembered with the rest of the form. The launcher will not start on a non-loopback host until both are changed, because an empty field also falls back to that public pair. |
 
 Your entries are remembered, so the next start is a single click.
 
@@ -148,10 +148,10 @@ and port you configured. The second one is about who owns that process:
 | --- | --- |
 | Ready to Launch | Nothing is running on that port. |
 | Managed by Launcher | The launcher started RustFS and can stop it again. |
-| Detected Externally | The port answers, but the process was not started here — for example a RustFS you launched from a terminal. The stop button stays disabled in that case. |
+| Detected Externally | The port answers, but the process was not started here — for example a RustFS you launched from a terminal. The form stays editable so you can change the port. Stop stays disabled, because this launcher does not own that process. |
 
 **Summary cards.** API and Console show the ports and open them in a browser once the service is online. Mode
-tells you whether the form is *Editable* or *Locked* because RustFS is running.
+is *Locked* only while this launcher is running RustFS. An externally detected server leaves the form *Editable*.
 
 **Version & Updates.** Shows the launcher version and the RustFS version built into it, and checks for a newer
 release when you ask it to.

@@ -12,6 +12,36 @@ pub(crate) fn normalize_host(host: &str) -> &str {
         .unwrap_or(trimmed)
 }
 
+pub(crate) fn is_loopback_host(host: &str) -> bool {
+    let host = normalize_host(host);
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
+fn illegal_bind_char(ch: char) -> bool {
+    ch.is_control()
+        || ch.is_whitespace()
+        || matches!(
+            ch,
+            '/' | '\\' | '@' | '?' | '#' | '%' | '"' | '\'' | '<' | '>' | '|' | '&' | ';' | '*'
+        )
+}
+
+/// Accepts a host that can be placed in `--address` and in an `http://` URL.
+pub(crate) fn validate_bind_host(host: &str) -> crate::error::Result<&str> {
+    let host = normalize_host(host);
+    if host.is_empty() {
+        return Err(crate::error::Error::InvalidHost("empty host".to_string()));
+    }
+    if host.len() > 253 || host.chars().any(illegal_bind_char) {
+        return Err(crate::error::Error::InvalidHost(host.to_string()));
+    }
+    Ok(host)
+}
+
 pub(crate) fn format_bind_address(host: &str, port: u16) -> String {
     let host = normalize_host(host);
     if host.contains(':') {
@@ -92,5 +122,27 @@ mod tests {
     fn invalid_hosts_are_offline_and_unavailable() {
         assert!(!tcp_online("[invalid", 9));
         assert!(!is_port_available("[invalid", 9));
+    }
+
+    #[test]
+    fn loopback_hosts_are_recognized_after_normalization() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("  localhost "));
+        assert!(is_loopback_host("[::1]"));
+        assert!(is_loopback_host("127.1.2.3"));
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("192.168.1.9"));
+        assert!(!is_loopback_host("*"));
+    }
+
+    #[test]
+    fn bind_host_rejects_url_and_argument_characters() {
+        assert_eq!(validate_bind_host(" 127.0.0.1 ").unwrap(), "127.0.0.1");
+        assert_eq!(validate_bind_host("[::1]").unwrap(), "::1");
+        assert!(validate_bind_host("127.0.0.1/admin").is_err());
+        assert!(validate_bind_host("user@127.0.0.1").is_err());
+        assert!(validate_bind_host("127.0.0.1\n--help").is_err());
+        assert!(validate_bind_host("*").is_err());
+        assert!(validate_bind_host("   ").is_err());
     }
 }

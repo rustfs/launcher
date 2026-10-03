@@ -58,8 +58,16 @@ enum UpdateProgress {
     Finished,
 }
 
+/// The webview must not choose which executable is spawned. `binary_path` exists
+/// so backend tests can inject a stub; it is not part of the saved configuration.
+pub(crate) fn without_caller_binary(mut config: RustFsConfig) -> RustFsConfig {
+    config.binary_path = None;
+    config
+}
+
 #[tauri::command]
 pub async fn launch_rustfs(config: RustFsConfig) -> Result<CommandResponse> {
+    let config = without_caller_binary(config);
     let handle = async_runtime::spawn_blocking(move || process::launch(config));
     let message = handle.await.map_err(|err| {
         let io_error = IoError::other(err.to_string());
@@ -83,10 +91,7 @@ pub async fn stop_rustfs() -> Result<CommandResponse> {
 
 #[tauri::command]
 pub async fn validate_config(config: RustFsConfig) -> Result<bool> {
-    process::resolve_data_path(&config.data_path)?;
-    if config.console_enable && config.api_port() == config.console_port() {
-        return Err(Error::PortConflict);
-    }
+    process::validate_config_for_launch(&config)?;
     Ok(true)
 }
 
@@ -291,7 +296,8 @@ pub async fn install_rustfs_update() -> Result<CommandResponse> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_http_url;
+    use super::{is_http_url, without_caller_binary};
+    use crate::config::RustFsConfig;
 
     #[test]
     fn http_url_validation() {
@@ -299,5 +305,15 @@ mod tests {
         assert!(is_http_url("https://example.com/console"));
         assert!(!is_http_url("file:///etc/passwd"));
         assert!(!is_http_url("http://evil.example \nhttp://other"));
+    }
+
+    #[test]
+    fn command_launch_ignores_a_caller_supplied_binary_path() {
+        let config = RustFsConfig {
+            binary_path: Some("/tmp/not-rustfs".into()),
+            data_path: "/tmp/data".into(),
+            ..RustFsConfig::default()
+        };
+        assert!(without_caller_binary(config).binary_path.is_none());
     }
 }

@@ -8,7 +8,7 @@ pub enum Error {
     #[error("Data path is required")]
     DataPathRequired,
 
-    #[error("Data path does not exist: {0}")]
+    #[error("Data path does not exist: {0}. Create this folder, then launch again")]
     DataPathNotExist(String),
 
     #[error("Data path is not a directory: {0}")]
@@ -20,8 +20,18 @@ pub enum Error {
     #[error("API port and console port must be different")]
     PortConflict,
 
-    #[error("Port {0} is already in use")]
+    #[error(
+        "Port {0} is already in use. Choose a different port, or stop the program that is listening on it"
+    )]
     PortInUse(u16),
+
+    #[error("Invalid bind host: {0}. Use 127.0.0.1, localhost, or an IP address such as 0.0.0.0")]
+    InvalidHost(String),
+
+    #[error(
+        "Refusing to expose the default rustfsadmin credentials on {0}. Bind to 127.0.0.1, or set a unique access key and secret key. Empty credentials also fall back to rustfsadmin"
+    )]
+    InsecureBind(String),
 
     #[error("RustFS is already running")]
     AlreadyRunning,
@@ -82,10 +92,9 @@ mod tests {
     #[test]
     fn serializes_as_the_display_string_for_the_frontend() {
         let error = Error::PortInUse(9000);
-        assert_eq!(
-            serde_json::to_string(&error).unwrap(),
-            "\"Port 9000 is already in use\""
-        );
+        let message = serde_json::to_string(&error).unwrap();
+        assert!(message.contains("Port 9000 is already in use"));
+        assert!(message.contains("Choose a different port"));
     }
 
     #[test]

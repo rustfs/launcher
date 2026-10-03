@@ -96,6 +96,14 @@ fn apply_progress_payload(payload: &JsValue, set_progress: WriteSignal<Option<u3
     }
 }
 
+fn default_access_key() -> Option<String> {
+    Some(crate::types::DEFAULT_ACCESS_KEY.to_string())
+}
+
+fn default_secret_key() -> Option<String> {
+    Some(crate::types::DEFAULT_SECRET_KEY.to_string())
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PersistedConfig {
     data_path: String,
@@ -103,6 +111,12 @@ struct PersistedConfig {
     console_port: Option<u16>,
     host: Option<String>,
     console_enable: bool,
+    // Saved with the rest of the form. Omitting them made every restart fall
+    // back to the published rustfsadmin pair, even after the user changed it.
+    #[serde(default = "default_access_key")]
+    access_key: Option<String>,
+    #[serde(default = "default_secret_key")]
+    secret_key: Option<String>,
 }
 
 impl From<&RustFsConfig> for PersistedConfig {
@@ -113,6 +127,8 @@ impl From<&RustFsConfig> for PersistedConfig {
             console_port: config.console_port,
             host: config.host.clone(),
             console_enable: config.console_enable,
+            access_key: config.access_key.clone(),
+            secret_key: config.secret_key.clone(),
         }
     }
 }
@@ -125,7 +141,8 @@ impl From<PersistedConfig> for RustFsConfig {
             console_port: config.console_port,
             host: config.host,
             console_enable: config.console_enable,
-            ..RustFsConfig::default()
+            access_key: config.access_key,
+            secret_key: config.secret_key,
         }
     }
 }
@@ -964,7 +981,7 @@ pub fn App() -> impl IntoView {
                     </button>
                     <div class="summary-card">
                         <span class="summary-label">"Mode"</span>
-                        <strong>{move || if is_running.get() { "Locked" } else { "Editable" }}</strong>
+                        <strong>{move || if can_stop.get() { "Locked" } else { "Editable" }}</strong>
                     </div>
                 </div>
 
@@ -1105,5 +1122,36 @@ pub fn App() -> impl IntoView {
                 />
             </div>
         </main>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PersistedConfig, RustFsConfig};
+    use crate::types::{DEFAULT_ACCESS_KEY, DEFAULT_SECRET_KEY};
+
+    #[test]
+    fn persisted_config_keeps_custom_credentials() {
+        let config = RustFsConfig {
+            data_path: "/data".into(),
+            access_key: Some("custom-ak".into()),
+            secret_key: Some("custom-sk".into()),
+            ..RustFsConfig::default()
+        };
+        let json = serde_json::to_string(&PersistedConfig::from(&config)).unwrap();
+        let loaded = RustFsConfig::from(serde_json::from_str::<PersistedConfig>(&json).unwrap());
+        assert_eq!(loaded.access_key.as_deref(), Some("custom-ak"));
+        assert_eq!(loaded.secret_key.as_deref(), Some("custom-sk"));
+        assert_eq!(loaded.data_path, "/data");
+    }
+
+    #[test]
+    fn older_saved_config_without_credentials_still_loads() {
+        let legacy = r#"{"data_path":"/data","port":9000,"console_port":9001,"host":"127.0.0.1","console_enable":true}"#;
+        let loaded = RustFsConfig::from(serde_json::from_str::<PersistedConfig>(legacy).unwrap());
+        assert_eq!(loaded.data_path, "/data");
+        assert!(loaded.console_enable);
+        assert_eq!(loaded.access_key.as_deref(), Some(DEFAULT_ACCESS_KEY));
+        assert_eq!(loaded.secret_key.as_deref(), Some(DEFAULT_SECRET_KEY));
     }
 }

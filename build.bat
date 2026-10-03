@@ -35,11 +35,12 @@ if not "%RUSTFS_ASSET_VERSION:~0,1%"=="v" set RUSTFS_ASSET_VERSION=v%RUSTFS_ASSE
 echo Latest RustFS version: %RUSTFS_RELEASE_TAG%
 
 REM Download Windows binary only
-set WINDOWS_X86_64_URL=https://github.com/rustfs/rustfs/releases/download/%RUSTFS_RELEASE_TAG%/rustfs-windows-x86_64-%RUSTFS_ASSET_VERSION%.zip
+set WINDOWS_ASSET=rustfs-windows-x86_64-%RUSTFS_ASSET_VERSION%.zip
+set WINDOWS_X86_64_URL=https://github.com/rustfs/rustfs/releases/download/%RUSTFS_RELEASE_TAG%/%WINDOWS_ASSET%
 
 if "%ARCH%"=="x86_64" (
     echo Downloading for Windows x86_64...
-    call :download_binary "%WINDOWS_X86_64_URL%" "rustfs-windows-x86_64" "rustfs-windows-x86_64.exe"
+    call :download_binary "%WINDOWS_X86_64_URL%" "rustfs-windows-x86_64" "rustfs-windows-x86_64.exe" "%WINDOWS_ASSET%"
 ) else (
     echo ✗ Error: Unsupported Windows architecture: %ARCH%
     echo Only x86_64 is supported
@@ -58,6 +59,7 @@ goto :eof
 set url=%~1
 set filename=%~2
 set target_name=%~3
+set asset_name=%~4
 
 echo Downloading %filename%...
 
@@ -65,6 +67,18 @@ REM Download using curl (available in Windows 10+)
 curl -fL --retry 3 --retry-delay 5 -H "Cache-Control: no-cache" -o "%TEMP_DIR%\%filename%.zip" "%url%"
 if errorlevel 1 (
     echo ✗ Error: Failed to download %filename%
+    exit /b 1
+)
+
+echo Verifying %asset_name%...
+curl -fsSL --retry 3 --retry-delay 5 -o "%TEMP_DIR%\SHA256SUMS" "https://github.com/rustfs/rustfs/releases/download/%RUSTFS_RELEASE_TAG%/SHA256SUMS"
+if errorlevel 1 (
+    echo ✗ Error: Failed to download SHA256SUMS
+    exit /b 1
+)
+powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $manifest='%TEMP_DIR%\SHA256SUMS'; $file='%TEMP_DIR%\%filename%.zip'; $name='%asset_name%'; $expected=$null; foreach($line in Get-Content -LiteralPath $manifest){ $parts=($line.Trim() -split '\s+'); if($parts.Count -ge 2){ $listed=$parts[1].TrimStart('*'); if($listed -eq $name -and $parts[0].Length -eq 64){ $expected=$parts[0].ToLowerInvariant(); break } } }; if(-not $expected){ Write-Error \"No SHA256 digest for $name\"; exit 1 }; $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant(); if($actual -ne $expected){ Write-Error \"Checksum mismatch for $name\"; exit 1 }; Write-Host \"Verified $name\""
+if errorlevel 1 (
+    echo ✗ Error: Checksum verification failed for %asset_name%
     exit /b 1
 )
 
