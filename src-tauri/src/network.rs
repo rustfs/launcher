@@ -31,13 +31,16 @@ fn illegal_bind_char(ch: char) -> bool {
 }
 
 /// Accepts a host that can be placed in `--address` and in an `http://` URL.
-pub(crate) fn validate_bind_host(host: &str) -> crate::error::Result<&str> {
+///
+/// Returns the rejected host (or `"empty host"`) so this file can be compiled
+/// on its own by `rustc --test`. The launcher maps that string to `Error::InvalidHost`.
+pub(crate) fn validate_bind_host(host: &str) -> Result<&str, String> {
     let host = normalize_host(host);
     if host.is_empty() {
-        return Err(crate::error::Error::InvalidHost("empty host".to_string()));
+        return Err("empty host".to_string());
     }
     if host.len() > 253 || host.chars().any(illegal_bind_char) {
-        return Err(crate::error::Error::InvalidHost(host.to_string()));
+        return Err(host.to_string());
     }
     Ok(host)
 }
@@ -166,10 +169,20 @@ mod tests {
     fn bind_host_rejects_url_and_argument_characters() {
         assert_eq!(validate_bind_host(" 127.0.0.1 ").unwrap(), "127.0.0.1");
         assert_eq!(validate_bind_host("[::1]").unwrap(), "::1");
-        assert!(validate_bind_host("127.0.0.1/admin").is_err());
-        assert!(validate_bind_host("user@127.0.0.1").is_err());
-        assert!(validate_bind_host("127.0.0.1\n--help").is_err());
-        assert!(validate_bind_host("*").is_err());
-        assert!(validate_bind_host("   ").is_err());
+        assert_eq!(
+            validate_bind_host("127.0.0.1/admin").unwrap_err(),
+            "127.0.0.1/admin"
+        );
+        assert_eq!(
+            validate_bind_host("user@127.0.0.1").unwrap_err(),
+            "user@127.0.0.1"
+        );
+        assert_eq!(
+            validate_bind_host("127.0.0.1\n--help").unwrap_err(),
+            "127.0.0.1\n--help"
+        );
+        assert_eq!(validate_bind_host("*").unwrap_err(), "*");
+        assert_eq!(validate_bind_host("   ").unwrap_err(), "empty host");
+        assert!(validate_bind_host(&"a".repeat(254)).is_err());
     }
 }

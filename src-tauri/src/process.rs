@@ -135,7 +135,8 @@ pub(crate) fn falls_back_to_published_credentials(config: &RustFsConfig) -> bool
 }
 
 pub(crate) fn validate_config_for_launch(config: &RustFsConfig) -> Result<()> {
-    let host = crate::network::validate_bind_host(config.bind_host())?;
+    let host =
+        crate::network::validate_bind_host(config.bind_host()).map_err(Error::InvalidHost)?;
     if !crate::network::is_loopback_host(host) && falls_back_to_published_credentials(config) {
         return Err(Error::InsecureBind(host.to_string()));
     }
