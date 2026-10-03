@@ -2,7 +2,7 @@ use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
 use crate::helpers::{
-    display_host, progress_percent, rustfs_idle_message, rustfs_source_label,
+    display_host, primary_action, progress_percent, rustfs_idle_message, rustfs_source_label,
     status_poll_is_current,
 };
 use crate::types::{
@@ -273,6 +273,7 @@ pub fn App() -> impl IntoView {
     let (current_log_type, set_current_log_type) = signal(LogType::App);
     let (service_status, set_service_status) = signal(false);
     let (can_stop, set_can_stop) = signal(false);
+    let (action_busy, set_action_busy) = signal(false);
     let (version_info, set_version_info) = signal(None::<AppVersionInfo>);
     let (update_info, set_update_info) = signal(None::<UpdateInfo>);
     let (rustfs_update_info, set_rustfs_update_info) = signal(None::<RustFsUpdateInfo>);
@@ -482,9 +483,11 @@ pub fn App() -> impl IntoView {
 
     let launch_rustfs = move |ev: SubmitEvent| {
         ev.prevent_default();
+        if action_busy.get_untracked() {
+            return;
+        }
         invalidate_status_polls();
-        set_is_running.set(true);
-        set_can_stop.set(true);
+        set_action_busy.set(true);
         show_toast("Launching RustFS...".to_string(), ToastType::Info);
 
         let now = js_sys::Date::new_0().to_locale_time_string("en-US");
@@ -517,6 +520,7 @@ pub fn App() -> impl IntoView {
                 );
                 set_is_running.set(false);
                 set_can_stop.set(false);
+                set_action_busy.set(false);
                 return;
             }
 
@@ -553,6 +557,7 @@ pub fn App() -> impl IntoView {
                 );
                 set_is_running.set(false);
                 set_can_stop.set(false);
+                set_action_busy.set(false);
                 settle_runtime();
                 return;
             }
@@ -578,6 +583,7 @@ pub fn App() -> impl IntoView {
                             if success {
                                 set_is_running.set(true);
                                 set_can_stop.set(true);
+                                set_action_busy.set(false);
                                 show_toast(
                                     "RustFS launched successfully!".to_string(),
                                     ToastType::Success,
@@ -598,6 +604,7 @@ pub fn App() -> impl IntoView {
                                 );
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
+                                set_action_busy.set(false);
                             }
                             settle_runtime();
                         }
@@ -614,6 +621,7 @@ pub fn App() -> impl IntoView {
                             );
                             set_is_running.set(false);
                             set_can_stop.set(false);
+                            set_action_busy.set(false);
                             settle_runtime();
                         }
                     }
@@ -628,6 +636,7 @@ pub fn App() -> impl IntoView {
                     );
                     set_is_running.set(false);
                     set_can_stop.set(false);
+                    set_action_busy.set(false);
                     settle_runtime();
                 }
             }
@@ -635,7 +644,11 @@ pub fn App() -> impl IntoView {
     };
 
     let stop_rustfs = move |_| {
+        if action_busy.get_untracked() {
+            return;
+        }
         invalidate_status_polls();
+        set_action_busy.set(true);
         show_toast("Stopping RustFS...".to_string(), ToastType::Info);
         push_log(
             set_app_logs,
@@ -652,6 +665,7 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
                                 set_service_status.set(false);
+                                set_action_busy.set(false);
                                 settle_runtime();
                                 show_toast("RustFS stopped".to_string(), ToastType::Success);
                                 push_log(
@@ -660,6 +674,7 @@ pub fn App() -> impl IntoView {
                                     APP_LOG_CAPACITY,
                                 );
                             } else {
+                                set_action_busy.set(false);
                                 settle_runtime();
                                 show_toast(
                                     format!("Failed to stop: {}", res.message),
@@ -673,6 +688,7 @@ pub fn App() -> impl IntoView {
                             }
                         }
                         Err(_) => {
+                            set_action_busy.set(false);
                             settle_runtime();
                             show_toast(
                                 "Failed to parse stop response".to_string(),
@@ -682,6 +698,7 @@ pub fn App() -> impl IntoView {
                     }
                 }
                 Err(err) => {
+                    set_action_busy.set(false);
                     settle_runtime();
                     show_toast(js_error_message(err), ToastType::Error);
                 }
@@ -1007,7 +1024,7 @@ pub fn App() -> impl IntoView {
                     </button>
                     <div class="summary-card">
                         <span class="summary-label">"Mode"</span>
-                        <strong>{move || if can_stop.get() { "Locked" } else { "Editable" }}</strong>
+                        <strong>{move || if primary_action(can_stop.get(), action_busy.get(), false).lock_form { "Locked" } else { "Editable" }}</strong>
                     </div>
                 </div>
 
@@ -1132,6 +1149,7 @@ pub fn App() -> impl IntoView {
                     set_config=set_config
                     is_running=is_running
                     can_stop=can_stop
+                    action_busy=action_busy
                     on_launch=Callback::new(launch_rustfs)
                     on_stop=Callback::new(stop_rustfs)
                 />

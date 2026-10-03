@@ -61,6 +61,33 @@ pub fn rustfs_source_label(managed: bool) -> &'static str {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrimaryAction {
+    pub label: &'static str,
+    pub disabled: bool,
+    pub lock_form: bool,
+    pub stops_service: bool,
+}
+
+/// The launch button shares one control with Stop. While a launch or stop is
+/// still in flight the form stays locked, but the click must not start the
+/// other operation: a second click used to send Stop before any process
+/// existed, toast "RustFS stopped", and then let the original launch succeed.
+pub fn primary_action(can_stop: bool, busy: bool, data_path_empty: bool) -> PrimaryAction {
+    PrimaryAction {
+        label: if busy && !can_stop {
+            "Launching…"
+        } else if can_stop {
+            "Stop RustFS"
+        } else {
+            "Launch RustFS"
+        },
+        disabled: busy || data_path_empty,
+        lock_form: can_stop || busy,
+        stops_service: can_stop && !busy,
+    }
+}
+
 pub fn rustfs_idle_message(notes: Option<&str>) -> String {
     notes
         .map(str::trim)
@@ -89,7 +116,7 @@ pub fn progress_percent(downloaded: f64, content_length: Option<f64>) -> Option<
 #[cfg(test)]
 mod tests {
     use super::{
-        display_host, progress_percent, public_default_credentials_message,
+        display_host, primary_action, progress_percent, public_default_credentials_message,
         refuses_public_default_credentials, rustfs_idle_message, rustfs_source_label,
         status_poll_is_current,
     };
@@ -117,6 +144,30 @@ mod tests {
         );
         assert_eq!(rustfs_idle_message(Some("  ")), "RustFS is up to date.");
         assert_eq!(rustfs_idle_message(None), "RustFS is up to date.");
+    }
+
+    #[test]
+    fn a_second_click_cannot_stop_a_launch_that_has_not_finished() {
+        let launching = primary_action(false, true, false);
+        assert_eq!(launching.label, "Launching…");
+        assert!(launching.disabled);
+        assert!(launching.lock_form);
+        assert!(!launching.stops_service);
+
+        let stopping = primary_action(true, true, false);
+        assert_eq!(stopping.label, "Stop RustFS");
+        assert!(stopping.disabled);
+        assert!(!stopping.stops_service);
+
+        let running = primary_action(true, false, false);
+        assert_eq!(running.label, "Stop RustFS");
+        assert!(!running.disabled);
+        assert!(running.stops_service);
+
+        let idle = primary_action(false, false, true);
+        assert_eq!(idle.label, "Launch RustFS");
+        assert!(idle.disabled);
+        assert!(!idle.lock_form);
     }
 
     #[test]
