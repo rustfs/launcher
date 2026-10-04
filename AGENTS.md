@@ -55,4 +55,4 @@ PRs should include an intent summary, the commands/tests run (or screenshots for
 Request review before merging and wait for CI; resolve any fmt/clippy/test failures locally first.
 
 ## Communication
-与用户交流时必须全程使用中文。
+Write repository documentation, workflow text, and pull requests in English.

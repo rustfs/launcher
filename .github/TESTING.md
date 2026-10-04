@@ -1,52 +1,52 @@
-# GitHub Actions 本地测试指南
+# Local GitHub Actions testing
 
-本项目使用 Makefile 和 [act](https://github.com/nektos/act) 工具来实现 GitHub Actions 工作流的本地测试。
+This repository uses a Makefile and [act](https://github.com/nektos/act) to run GitHub Actions workflows locally.
 
-## 快速开始
+## Quick start
 
-### 1. 安装依赖
+### 1. Install dependencies
 
 **macOS:**
 ```bash
-# 安装 Docker Desktop (如未安装)
-# 下载地址: https://www.docker.com/products/docker-desktop
+# Install Docker Desktop if needed
+# https://www.docker.com/products/docker-desktop
 
-# 使用 Makefile 自动安装 act
+# Install act through the Makefile
 make install-act
 ```
 
-**手动安装 act:**
+**Install act yourself:**
 ```bash
 brew install act
 ```
 
-### 2. 验证安装
+### 2. Check the install
 
 ```bash
-# 检查 Docker 是否运行
+# Confirm Docker is running
 docker ps
 
-# 检查 act 版本
+# Confirm the act version
 act --version
 ```
 
-## 使用方法
+## Usage
 
-### 提交前检查 (推荐)
+### Pre-commit check (recommended)
 
-**最重要的命令 - 在提交代码前运行:**
+**Run this before you commit:**
 
 ```bash
 make pre-commit
 ```
 
-这个命令会依次运行所有 CI 检查项,确保你的代码能通过 GitHub Actions CI:
-1. **代码格式检查** - `cargo fmt --all --check`
-2. **Clippy 代码质量检查** - `cargo clippy --all-targets --all-features -- -D warnings`
-3. **前端构建** - `trunk build`
-4. **单元测试** - `cargo test --all-features`
+It runs the CI checks in order:
+1. **Formatting** - `cargo fmt --all --check`
+2. **Clippy** - `cargo clippy --all-targets --all-features -- -D warnings`
+3. **Frontend build** - `trunk build`
+4. **Unit tests** - `cargo test --all-features`
 
-如果所有检查都通过,你会看到:
+When they pass you will see:
 ```
 ==========================================
 ✅ All pre-commit checks passed!
@@ -54,34 +54,32 @@ make pre-commit
 Your code is ready to commit and push.
 ```
 
-### 单独运行检查
-
-如果你只想运行特定的检查:
+### Run one check
 
 ```bash
-# 仅检查代码格式
+# Formatting only
 make check-fmt
 
-# 仅运行 Clippy
+# Clippy only
 make check-clippy
 
-# 仅构建前端
+# Frontend build only
 make check-frontend
 
-# 仅运行测试
+# Tests only
 make check-test
 
-# 自动修复代码格式
+# Rewrite formatting
 make fix-fmt
 ```
 
-### 查看所有可用命令
+### List targets
 
 ```bash
 make help
 ```
 
-输出示例:
+Example output:
 ```
 RustFS Launcher - GitHub Actions Local Testing
 
@@ -95,244 +93,252 @@ Available targets:
   make clean         - Clean act cache and temporary files
 ```
 
-### 常用测试命令
+### Common test commands
 
-#### 测试 CI 工作流
+#### CI workflow
 
 ```bash
-# 快速测试 (推荐用于日常开发)
+# Quick run for day-to-day work
 make test-ci
 
-# 完整测试 (包含所有依赖)
+# Full run, including dependencies
 make test-ci-full
 
-# 详细输出模式
+# Verbose output
 make test-ci-verbose
 ```
 
-#### 测试特定检查
+#### One check
 
 ```bash
-# 仅测试代码格式化
+# Formatting only
 make test-fmt
 
-# 仅测试 clippy 检查
+# Clippy only
 make test-clippy
 
-# 运行本地测试
+# Local tests
 make test-local
 ```
 
-#### 查看工作流信息
+#### Workflow info
 
 ```bash
-# 列出所有任务
+# List jobs
 make list-jobs
 
-# 预览执行计划 (不实际运行)
+# Preview the plan without running it
 make dry-run-ci
 ```
 
-#### 清理缓存
+#### Clear the cache
 
 ```bash
-# 清理 act 缓存和临时文件
+# Remove the act cache and temporary files
 make clean
 ```
 
-## 工作流说明
+## Workflows
 
-### CI 工作流 (ci.yml)
+### CI (`ci.yml`)
 
-触发条件:
-- Push 到 main 分支
-- Pull Request
+Triggers:
+- Push to `main`
+- Pull request
 
-包含步骤:
-- Rust 代码格式检查 (`cargo fmt`)
-- Clippy 静态分析 (`cargo clippy`)
-- 前端构建验证
-- 单元测试运行
+Steps:
+- Rust formatting (`cargo fmt`)
+- Clippy (`cargo clippy`)
+- Frontend build
+- Unit tests
 
-本地测试命令:
+Runner: `sm-standard-2` (mapped to an Ubuntu image for local `act` runs).
+
+Local command:
 ```bash
 make test-ci
 ```
 
-### Build 工作流 (build.yml)
+### Native CI (`ci-native.yml`)
 
-触发条件:
-- 推送 tag (v*)
-- 手动触发
+Manual only (`workflow_dispatch`). It runs the same Windows and macOS native tests on `windows-latest` and `macos-latest`. Local `act` cannot reproduce those hosts.
 
-支持平台:
-- macOS (Apple Silicon)
-- macOS (Intel)
-- Windows (x86_64)
+### Build (`build.yml`)
 
-本地测试命令:
+Triggers:
+- Manual dispatch only (`workflow_dispatch`)
+- Tag pushes and Release events do not start it
+
+Platforms:
+- macOS (Apple Silicon) on `macos-latest`
+- macOS (Intel) on `macos-15-intel`
+- Windows (x86_64) on `windows-latest`
+
+Linux helper jobs use `sm-standard-2`.
+
+Local command:
 ```bash
 make test-build
 ```
 
-⚠️ **注意:** build 工作流包含平台特定步骤,本地测试无法完全模拟所有平台的构建过程。
+The build workflow has platform-specific steps. A local run cannot fully reproduce every platform.
 
-## 配置文件
+## Configuration
 
 ### .actrc
 
-项目根目录的 `.actrc` 文件配置了 act 的默认行为:
-- 使用 `catthehacker/ubuntu:act-latest` 镜像
-- 容器架构: `linux/amd64`
-- 启用容器重用以加快后续运行速度
+`.actrc` in the repository root sets act defaults:
+- `sm-standard-2` and `ubuntu-latest` use the `catthehacker/ubuntu:act-latest` image
+- Container architecture: `linux/amd64`
+- Containers are reused so later runs are faster
 
-如需自定义配置,可创建 `.actrc.local` 文件(已在 .gitignore 中)。
+Create `.actrc.local` for a personal override (it is gitignored).
 
-## 常见问题
+## FAQ
 
-### 1. Docker daemon 错误
+### 1. Docker daemon error
 
-**错误信息:**
+**Error:**
 ```
 Cannot connect to the Docker daemon
 ```
 
-**解决方法:**
-- 确保 Docker Desktop 已启动
-- 运行 `docker ps` 验证 Docker 是否正常工作
+**Fix:**
+- Start Docker Desktop
+- Run `docker ps` to confirm Docker is up
 
-### 2. 首次运行很慢
+### 2. The first run is slow
 
-**原因:** 第一次运行需要下载 Docker 镜像(约 1-2GB)
+**Cause:** the first run downloads a Docker image (about 1-2 GB).
 
-**解决方法:**
-- 耐心等待下载完成
-- 后续运行会快得多(容器会被重用)
+**Fix:**
+- Wait for the download
+- Later runs are faster because the container is reused
 
-### 3. 权限错误
+### 3. Permission denied
 
-**错误信息:**
+**Error:**
 ```
 Permission denied
 ```
 
-**解决方法:**
+**Fix:**
 ```bash
-# 确保 Makefile 可执行
+# Make the Makefile executable
 chmod +x Makefile
 
-# 或使用 sudo (不推荐)
+# Or use sudo (not recommended)
 sudo make test-ci
 ```
 
-### 4. act 版本过旧
+### 4. act is out of date
 
-**解决方法:**
+**Fix:**
 ```bash
-# 更新 act
+# Upgrade act
 brew upgrade act
 
-# 或重新安装
+# Or reinstall it
 make install-act
 ```
 
-### 5. 磁盘空间不足
+### 5. Disk space
 
-**解决方法:**
+**Fix:**
 ```bash
-# 清理 act 缓存
+# Clear the act cache
 make clean
 
-# 清理 Docker 镜像
+# Remove unused Docker images
 docker system prune -a
 ```
 
-## 最佳实践
+## Practices
 
-1. **提交代码前务必运行**
+1. **Run this before every commit**
    ```bash
    make pre-commit
    ```
-   这是最重要的步骤! 确保你的代码能通过所有 CI 检查。
+   This is the check that matches CI.
 
-2. **开发过程中频繁检查**
+2. **Check while you work**
    ```bash
-   # 写完代码后快速验证格式
+   # Formatting after an edit
    make check-fmt
 
-   # 修复格式问题
+   # Rewrite formatting
    make fix-fmt
 
-   # 验证代码质量
+   # Clippy
    make check-clippy
    ```
 
-3. **修改工作流后验证**
+3. **After you edit a workflow**
    ```bash
-   make dry-run-ci  # 预览执行计划
-   make test-ci     # 实际运行测试
+   make dry-run-ci  # preview the plan
+   make test-ci     # run it
    ```
 
-4. **定期清理缓存**
+4. **Clear the cache periodically**
    ```bash
    make clean
    ```
 
-5. **推荐的工作流程**
+5. **Suggested flow**
    ```bash
-   # 1. 编写代码
+   # 1. Edit
    vim src-tauri/src/main.rs
 
-   # 2. 自动修复格式
+   # 2. Fix formatting
    make fix-fmt
 
-   # 3. 运行所有检查
+   # 3. Run every check
    make pre-commit
 
-   # 4. 如果通过,提交代码
+   # 4. Commit when it passes
    git add .
    git commit -m "feat: add new feature"
    git push
    ```
 
-## 高级用法
+## Advanced
 
-### 运行特定任务
+### Run one job
 
 ```bash
 make test-ci-job
-# 然后按提示输入任务名称,例如: check
+# Enter a job name when prompted, for example: check
 ```
 
-### 使用不同的 Docker 镜像
+### Use another Docker image
 
-编辑 `.actrc.local`:
+Edit `.actrc.local`:
 ```
 -P sm-standard-2=catthehacker/ubuntu:full-latest
 ```
 
-### 传递环境变量
+### Pass environment variables
 
 ```bash
 act push -W .github/workflows/ci.yml --env RUST_LOG=debug
 ```
 
-### 调试工作流
+### Debug a workflow
 
 ```bash
-# 使用详细输出
+# Verbose Make target
 make test-ci-verbose
 
-# 或直接使用 act
+# Or call act directly
 act push -W .github/workflows/ci.yml --verbose
 ```
 
-## 参考资料
+## References
 
-- [act 官方文档](https://github.com/nektos/act)
-- [GitHub Actions 文档](https://docs.github.com/en/actions)
-- [项目 Actions 使用说明](.github/ACTIONS.md)
+- [act documentation](https://github.com/nektos/act)
+- [GitHub Actions documentation](https://docs.github.com/en/actions)
+- [Project Actions guide](.github/ACTIONS.md)
 
-## 贡献
+## Contributing
 
-如有改进建议,欢迎提交 Issue 或 Pull Request。
+Open an issue or pull request if you have a suggestion.

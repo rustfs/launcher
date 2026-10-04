@@ -1,28 +1,29 @@
 name: Upstream Sync
 
-# 当上游 rustfs/rustfs 发布新版本时创建 git tag。
-# 桌面安装包使用 GitHub 托管的 macOS/Windows runner，不再由本工作流自动触发。
+# Create a git tag when rustfs/rustfs publishes a new version.
+# Desktop installers use GitHub-hosted macOS/Windows runners and are not
+# started by this workflow.
 on:
-  # 定时检查上游版本（每天一次，02:00 UTC）
+  # Check upstream once a day at 02:00 UTC.
   schedule:
     - cron: '0 2 * * *'
   
-  # 支持手动触发
+  # Manual trigger.
   workflow_dispatch:
     inputs:
       force_build:
-        description: '即使版本未变化，也提示手动构建桌面安装包'
+        description: 'Prompt for a manual desktop build even when the version is unchanged'
         required: false
         type: boolean
         default: false
 
 jobs:
   check-upstream:
-    name: 检查上游版本
+    name: Check upstream version
     runs-on: sm-standard-2
     timeout-minutes: 15
     permissions:
-      contents: write  # 需要写权限来创建 tag
+      contents: write  # Required to create a tag
     outputs:
       has_new_version: ${{ steps.compare.outputs.has_new_version }}
       upstream_version: ${{ steps.upstream.outputs.version }}
@@ -34,40 +35,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 安装 jq
+      - name: Install jq
         run: |
           if ! command -v jq >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y jq
           fi
       
-      - name: 获取上游最新版本
+      - name: Fetch latest upstream version
         id: upstream
         run: |
           set -o pipefail
           
-          # version.rustfs.com/latest.json 是 RustFS 官方最新版本入口
+          # version.rustfs.com/latest.json is the official RustFS version feed.
           RAW_RESPONSE="$(curl -fsSL 'https://version.rustfs.com/latest.json')"
           UPSTREAM_VERSION="$(printf '%s' "$RAW_RESPONSE" | jq -r '.tag // .version // empty')"
           
           if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "null" ]; then
-            echo "❌ 无法从 latest.json 响应中提取上游版本"
+            echo "Failed to extract an upstream version from the latest.json response"
             echo "$RAW_RESPONSE"
             exit 1
           fi
           
           echo "version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
-          echo "✅ 上游最新版本: $UPSTREAM_VERSION"
+          echo "Latest upstream version: $UPSTREAM_VERSION"
       
-      - name: 获取当前仓库版本
+      - name: Read current repository version
         id: current
         run: |
-          # 从最新的 git tag 获取当前版本
+          # Current version comes from the newest git tag.
           CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "📦 当前版本: $CURRENT_VERSION"
+          echo "Current version: $CURRENT_VERSION"
       
-      - name: 比较版本
+      - name: Compare versions
         id: compare
         run: |
           UPSTREAM="${{ steps.upstream.outputs.version }}"
@@ -76,77 +77,74 @@ jobs:
           UPSTREAM_NORMALIZED="${UPSTREAM#v}"
           CURRENT_NORMALIZED="${CURRENT#v}"
           
-          echo "上游版本: $UPSTREAM"
-          echo "当前版本: $CURRENT"
+          echo "Upstream version: $UPSTREAM"
+          echo "Current version: $CURRENT"
           
           if [ "$FORCE" = "true" ]; then
-            echo "🔨 强制构建模式"
+            echo "Force-build mode"
             {
               echo "has_new_version=true"
               echo "should_build=true"
             } >> "$GITHUB_OUTPUT"
           elif [ "$UPSTREAM_NORMALIZED" != "$CURRENT_NORMALIZED" ]; then
-            echo "🆕 发现新版本: $UPSTREAM (当前: $CURRENT)"
+            echo "New version found: $UPSTREAM (current: $CURRENT)"
             {
               echo "has_new_version=true"
               echo "should_build=true"
             } >> "$GITHUB_OUTPUT"
           else
-            echo "✅ 已是最新版本"
+            echo "Already on the latest version"
             {
               echo "has_new_version=false"
               echo "should_build=false"
             } >> "$GITHUB_OUTPUT"
           fi
       
-      - name: 创建新版本标签
+      - name: Create version tag
         if: steps.compare.outputs.has_new_version == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           UPSTREAM_VERSION="${{ steps.upstream.outputs.version }}"
           
-          # 配置 git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 检查标签是否已存在
           if git rev-parse "$UPSTREAM_VERSION" >/dev/null 2>&1; then
-            echo "⚠️  标签 $UPSTREAM_VERSION 已存在，跳过创建"
+            echo "Tag $UPSTREAM_VERSION already exists; skipping creation"
           else
-            # 创建并推送标签
             git tag -a "$UPSTREAM_VERSION" -m "Sync with upstream rustfs/rustfs $UPSTREAM_VERSION"
             git push origin "$UPSTREAM_VERSION"
-            echo "✅ 已创建并推送标签: $UPSTREAM_VERSION"
+            echo "Created and pushed tag: $UPSTREAM_VERSION"
           fi
 
   trigger-build:
-    name: 提醒手动构建桌面安装包
+    name: Remind to build desktop installers manually
     needs: check-upstream
     if: needs.check-upstream.outputs.should_build == 'true'
     runs-on: sm-standard-2
     timeout-minutes: 10
     
     steps:
-      - name: 说明为何未自动触发构建
+      - name: Explain why the desktop build was not started
         run: |
           UPSTREAM_VERSION="${{ needs.check-upstream.outputs.upstream_version }}"
 
-          echo "🚀 上游版本已记录: $UPSTREAM_VERSION"
-          echo "桌面安装包（macOS Apple Silicon、macOS Intel、Windows）不会自动构建。"
-          echo "组织没有自托管的 macOS/Windows runner，Tauri 的 DMG/codesign 与 NSIS 安装包也无法在 Linux 上交叉编译。"
-          echo "这些任务使用 GitHub 托管 runner，只在手动运行 Build and Release 时计费。"
-          echo "手动发布示例："
+          echo "Recorded upstream version: $UPSTREAM_VERSION"
+          echo "Desktop installers (macOS Apple Silicon, macOS Intel, and Windows) are not built automatically."
+          echo "The org has no self-hosted macOS or Windows runners, and Tauri DMG/codesign and NSIS bundles cannot be cross-compiled on Linux."
+          echo "Those jobs use GitHub-hosted runners and are billed only when Build and Release is run manually."
+          echo "Manual publish example:"
           echo "  gh workflow run build.yml --ref $UPSTREAM_VERSION -f tag=$UPSTREAM_VERSION -f publish=true"
           echo "::warning title=Desktop build not started::Tag $UPSTREAM_VERSION is ready. Dispatch Build and Release manually; macOS/Windows jobs use billed GitHub-hosted runners."
       
-      - name: 发送通知
+      - name: Send notice
         if: always()
         run: |
           UPSTREAM_VERSION="${{ needs.check-upstream.outputs.upstream_version }}"
-          echo "📢 版本同步通知："
-          echo "  - 上游版本: $UPSTREAM_VERSION"
-          echo "  - 工作流状态: ${{ job.status }}"
-          echo "  - 仓库: ${{ github.repository }}"
-          echo "  - 运行ID: ${{ github.run_id }}"
-          echo "  - 桌面安装包: 需手动运行 Build and Release"
+          echo "Version sync notice:"
+          echo "  - Upstream version: $UPSTREAM_VERSION"
+          echo "  - Job status: ${{ job.status }}"
+          echo "  - Repository: ${{ github.repository }}"
+          echo "  - Run ID: ${{ github.run_id }}"
+          echo "  - Desktop installers: run Build and Release manually"
