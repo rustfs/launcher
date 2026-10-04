@@ -1,11 +1,14 @@
 name: Build and Release
 
+# Manual only. macOS and Windows installers need GitHub-hosted runners
+# (macos-latest, macos-15-intel, windows-latest). The org has no self-hosted
+# macOS or Windows runners, and these Tauri bundles cannot be cross-compiled
+# on Linux: DMG creation and codesign require macOS, and the NSIS installer
+# requires the Windows toolchain. Tag pushes, GitHub Release events, and the
+# upstream-sync schedule do not start this workflow. Linux helper jobs below
+# use the org self-hosted runner.
+
 on:
-  push:
-    tags:
-      - "*.*.*"
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -26,7 +29,8 @@ jobs:
   # Build strategy check - determine build type and version
   build-check:
     name: Build Strategy Check
-    runs-on: ubuntu-latest
+    runs-on: sm-standard-2
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -109,6 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # GitHub-hosted. This workflow is workflow_dispatch only; see the header.
         include:
           - platform: "macos-latest"
             rust_target: "aarch64-apple-darwin"
@@ -126,6 +131,7 @@ jobs:
             arch: "x86_64"
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -347,17 +353,18 @@ jobs:
           ARTIFACT_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-${VERSION}"
           LATEST_PREFIX="rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-latest"
 
-          # 使用绝对路径，避免后续进入 app bundle 目录后破坏 updater/artifact 路径。
+          # Absolute paths, so later steps that enter the app bundle do not
+          # break updater and artifact paths.
           APP_DIR=$(find "$GITHUB_WORKSPACE/src-tauri" "$GITHUB_WORKSPACE/target" -path "*bundle/macos/*.app" -type d -print -quit 2>/dev/null || true)
           DMG_FILE=$(find "$GITHUB_WORKSPACE/src-tauri" "$GITHUB_WORKSPACE/target" -path "*bundle/dmg/*.dmg" -type f -print -quit 2>/dev/null || true)
           UPDATER_FILE=""
 
-          echo "发现的 .app 目录：${APP_DIR:-无}"
-          echo "发现的 .dmg 文件：${DMG_FILE:-无}"
+          echo "Found .app directory: ${APP_DIR:-none}"
+          echo "Found .dmg file: ${DMG_FILE:-none}"
           find "$GITHUB_WORKSPACE/src-tauri" "$GITHUB_WORKSPACE/target" -path "*bundle/*" -print 2>/dev/null | head -80 || true
 
           if [ -z "$APP_DIR" ]; then
-            echo "❌ 未找到 .app 产物"
+            echo "No .app artifact found"
             exit 1
           fi
 
@@ -399,24 +406,24 @@ jobs:
           # Format: rustfs-launcher-{os}-{arch}-{version}
           $ARTIFACT_PREFIX = "rustfs-launcher-${{ matrix.os_name }}-${{ matrix.arch }}-$env:VERSION"
 
-          # 调试：列出可能的构建输出目录
+          # List candidate build output directories.
           $targetPath = "target/${{ matrix.rust_target }}/release/bundle"
           if (-not (Test-Path $targetPath)) {
             $targetPath = "src-tauri/target/${{ matrix.rust_target }}/release/bundle"
           }
-          Write-Host "🔍 搜索构建产物目录: $targetPath"
+          Write-Host "Searching for build artifacts in: $targetPath"
           if (Test-Path $targetPath) {
-            Write-Host "📁 Bundle 目录存在，内容："
+            Write-Host "Bundle directory contents:"
             Get-ChildItem -Path $targetPath -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           } else {
-            Write-Host "❌ Bundle 目录不存在: $targetPath"
+            Write-Host "Bundle directory does not exist: $targetPath"
           }
 
           $artifactCount = 0
 
           # Copy and rename MSI
           # $msiPath = "$targetPath/msi"
-          # Write-Host "🔍 搜索 MSI 文件: $msiPath"
+          # Write-Host "Searching for MSI files: $msiPath"
           # $msiFiles = Get-ChildItem -Path $msiPath -Filter "*.msi" -ErrorAction SilentlyContinue
           # if ($msiFiles) {
           #   $destPath = "artifacts/$ARTIFACT_PREFIX.msi"
@@ -424,19 +431,19 @@ jobs:
           #   Write-Host "✅ Created: $destPath"
           #   $artifactCount++
           # } else {
-          #   Write-Host "⚠️ 未找到 MSI 文件在: $msiPath"
+          #   Write-Host "No MSI file found in: $msiPath"
           # }
 
           # Copy and rename EXE (NSIS installer)
           $nsisPath = "$targetPath/nsis"
-          Write-Host "🔍 搜索 NSIS EXE 文件: $nsisPath"
+          Write-Host "Searching for NSIS EXE files: $nsisPath"
           $exeFiles = Get-ChildItem -Path $nsisPath -Filter "*.exe" -ErrorAction SilentlyContinue
           if ($exeFiles) {
             $destPath = "artifacts/$ARTIFACT_PREFIX-setup.exe"
             Copy-Item $exeFiles[0].FullName -Destination $destPath
             $signaturePath = "$($exeFiles[0].FullName).sig"
             if ($env:IS_RELEASE -eq "true" -and -not (Test-Path $signaturePath)) {
-              Write-Error "未找到 Windows updater 签名: $signaturePath"
+              Write-Error "Windows updater signature not found: $signaturePath"
               exit 1
             }
             if (Test-Path $signaturePath) {
@@ -445,13 +452,13 @@ jobs:
             Write-Host "✅ Created: $destPath"
             $artifactCount++
           } else {
-            Write-Host "⚠️ 未找到 NSIS EXE 文件在: $nsisPath"
+            Write-Host "No NSIS EXE file found in: $nsisPath"
           }
 
-          # 检查是否至少生成了一个产物
+          # Require at least one artifact.
           if ($artifactCount -eq 0) {
-            Write-Host "❌ 错误：未找到任何构建产物（MSI 或 EXE）"
-            Write-Host "请检查构建是否成功完成"
+            Write-Host "No build artifacts found (MSI or EXE)"
+            Write-Host "Check that the build finished successfully"
             exit 1
           }
 
@@ -470,11 +477,11 @@ jobs:
             }
           }
 
-          # 只保留 NSIS EXE 文件，删除 MSI 文件
+          # Keep the NSIS EXE and drop MSI files.
           Get-ChildItem -Path "artifacts" -Filter "*.msi" | Remove-Item -Force
-          Write-Host "🗑️ 已删除 MSI 文件，只保留 EXE 安装包"
+          Write-Host "Removed MSI files; keeping the EXE installer"
 
-          Write-Host "📦 最终 artifacts 列表："
+          Write-Host "Final artifacts:"
           Get-ChildItem -Path artifacts | Format-Table Name, Length -AutoSize
 
       - name: Upload artifacts
@@ -552,12 +559,20 @@ jobs:
   upload-release-assets:
     name: Upload Release Assets
     needs: [build-check, build]
-    runs-on: ubuntu-latest
+    runs-on: sm-standard-2
+    timeout-minutes: 30
     if: needs.build-check.outputs.is_release == 'true'
     permissions:
       contents: write
 
     steps:
+      - name: Install jq
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v6
         with:
@@ -633,7 +648,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "RustFS Launcher ${version}，包含构建时选定的 RustFS 版本。" \
+            --arg notes "RustFS Launcher ${version}, including the RustFS version selected at build time." \
             --arg pub_date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --argjson platforms "$platforms" \
             '{

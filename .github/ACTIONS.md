@@ -1,109 +1,108 @@
-# GitHub Actions 自动编译说明
+# GitHub Actions build guide
 
-本项目配置了完整的 GitHub Actions CI/CD 流程，支持自动编译和发布。
+Automatic jobs in this repository run on the organization's self-hosted runner (`sm-standard-2`). macOS and Windows jobs have no self-hosted runners. They use GitHub-hosted runners only when someone starts the workflow by hand.
 
-## 工作流说明
+## Workflows
 
-### 1. CI 工作流 (`.github/workflows/ci.yml`)
+### 1. CI (`.github/workflows/ci.yml`)
 
-**触发条件:**
-- Push 到 `main` 分支
-- 创建或更新 Pull Request
+**Triggers:**
+- Push to `main`
+- Pull request opened or updated
 
-**功能:**
-- 代码格式检查 (rustfmt)
-- Clippy 代码质量检查
-- 前端构建验证
-- 单元测试运行
+**Runner:** `sm-standard-2`
 
-### 2. Build and Release 工作流 (`.github/workflows/build.yml`)
+**What it checks:**
+- Rust formatting (rustfmt)
+- Clippy
+- Frontend build
+- Unit tests
 
-**触发条件:**
-- 推送 tag（例如: `0.1.0`, `v1.0.0`）
-- 发布 Release（当 Release 状态变为 published 时）
-- 手动触发 (workflow_dispatch)
+Windows and macOS native tests live in `.github/workflows/ci-native.yml`. The steps are unchanged. That workflow responds only to `workflow_dispatch` and uses `windows-latest` and `macos-latest`.
 
-**支持平台:**
+### 2. Build and Release (`.github/workflows/build.yml`)
+
+**Triggers:**
+- Manual dispatch only (`workflow_dispatch`)
+- Pushing a tag or publishing a Release does **not** start this workflow
+
+**Runners:**
+- `build-check` and `upload-release-assets`: `sm-standard-2`
+- macOS Apple Silicon: `macos-latest` (GitHub-hosted; billed only on manual dispatch)
+- macOS Intel: `macos-15-intel` (GitHub-hosted; billed only on manual dispatch)
+- Windows: `windows-latest` (GitHub-hosted; billed only on manual dispatch)
+
+**Platforms:**
 - **macOS Apple Silicon** (aarch64)
 - **macOS Intel** (x86_64)
 - **Windows** (x86_64)
 
-**产物类型:**
-- macOS: `.app.zip` 压缩包
-- Windows: `.msi` 安装包和 `.exe` 安装程序
+**Artifacts:**
+- macOS: `.app.zip` archive
+- Windows: `.msi` package and `.exe` installer
 
-**产物命名格式:**
-- `rustfs-launcher-{platform}-{arch}-{version}.{ext}` (例如: `rustfs-launcher-macos-aarch64-v0.1.0.dmg`)
-- `rustfs-launcher-{platform}-{arch}-latest.{ext}` (最新版本链接)
+**Names:**
+- `rustfs-launcher-{platform}-{arch}-{version}.{ext}` (for example `rustfs-launcher-macos-aarch64-v0.1.0.dmg`)
+- `rustfs-launcher-{platform}-{arch}-latest.{ext}` (latest alias)
 
-**产物上传位置:**
-- GitHub Release Assets
+**Upload destinations:**
+- GitHub Release assets
 - Cloudflare R2: `s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/`
 
-## 使用方法
+## How to publish
 
-### 发布新版本
+### Release a new version
 
-1. **更新版本号**
+1. **Bump the version**
 
-   编辑以下文件中的版本号:
+   Edit the version in:
    ```
    src-tauri/Cargo.toml
    src-tauri/tauri.conf.json
    ```
 
-2. **提交更改**
+2. **Commit the change**
    ```bash
    git add .
    git commit -m "chore: bump version to v0.1.0"
    git push origin main
    ```
 
-3. **发布方式（选择其一）**
+3. **Build and publish manually**
 
-   **方式一：推送 tag（自动创建 Release）**
+   The upstream sync workflow creates the matching git tag once a day. It does not compile desktop installers.
+   Open Actions, choose "Build and Release", or use the GitHub CLI. This uses billed macOS and Windows runners:
+
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   gh workflow run build.yml --ref v0.1.0 -f tag=v0.1.0 -f publish=true
    ```
 
-   **方式二：通过 GitHub Web 界面创建 Release**
-   - 访问仓库的 "Releases" 页面
-   - 点击 "Draft a new release"
-   - 创建新的 tag（如 `v0.1.0`）或选择已有 tag
-   - 填写 Release 标题和描述
-   - 点击 "Publish release"
+   `publish` defaults to false. In that mode the workflow uploads a workflow artifact only. It does not publish a Release or upload to R2.
 
-   **方式三：通过 GitHub CLI**
-   ```bash
-   gh release create v0.1.0 --title "v0.1.0" --notes "Release notes"
-   ```
+4. **Wait for the build**
 
-4. **等待编译完成**
-
-   当 tag 推送或 Release 发布（published）后，GitHub Actions 会自动触发编译。
-   访问 GitHub Actions 页面查看编译进度:
+   Watch the manual run on the Actions page:
    ```
    https://github.com/YOUR_USERNAME/YOUR_REPO/actions
    ```
 
-5. **发布完成**
+5. **After a successful publish**
 
-    编译成功后会自动:
+    When `publish` is true, a successful build:
 
-    - 将构建产物上传到 Release Assets
-    - 将构建产物上传到 Cloudflare R2 (`s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/`)
+    - Uploads artifacts to the Release
+    - Uploads artifacts to Cloudflare R2 (`s3://${R2_BUCKET}/artifacts/rustfs-launcher/release/`)
 
-### 手动触发编译
+### Dispatch a build without publishing
 
-1. 访问 GitHub Actions 页面
-2. 选择 "Build and Release" 工作流
-3. 点击 "Run workflow" 按钮
-4. 选择分支并运行
+1. Open the Actions page
+2. Select the "Build and Release" workflow
+3. Click "Run workflow"
+4. Choose the branch and run it
 
-## 编译产物说明
+## Build artifacts
 
-编译完成后，会生成以下文件:
+A finished build produces:
 
 ```
 rustfs-launcher-macos-aarch64/
@@ -121,30 +120,30 @@ rustfs-launcher-windows-x86_64/
   └── rustfs-launcher-windows-x86_64-latest-setup.exe
 ```
 
-## 常见问题
+## FAQ
 
-### 1. 编译失败怎么办?
+### 1. The build failed
 
-- 检查 GitHub Actions 日志，查看具体错误信息
-- 确保所有依赖都已正确配置
-- 验证 RustFS 二进制文件下载链接是否有效
+- Read the GitHub Actions log for the error
+- Confirm dependencies are configured
+- Confirm the RustFS binary download URL is valid
 
-### 2. 如何修改编译目标?
+### 2. How do I change build targets?
 
-编辑 `.github/workflows/build.yml` 文件中的 `matrix` 配置:
+Edit the `matrix` in `.github/workflows/build.yml`:
 
 ```yaml
 strategy:
   matrix:
     include:
-      - platform: 'ubuntu-latest'  # 添加 Linux 支持
+      - platform: 'sm-standard-2'  # self-hosted Linux; do not use ubuntu-latest
         target: 'x86_64-unknown-linux-gnu'
         # ...
 ```
 
-### 3. 如何添加代码签名?
+### 3. How do I add code signing?
 
-在 GitHub Repository Settings 中添加以下 Secrets:
+Add these secrets in the repository settings:
 
 **macOS:**
 - `APPLE_CERTIFICATE`
@@ -163,115 +162,113 @@ strategy:
 - `R2_ENDPOINT`
 - `R2_BUCKET`
 
-然后在 workflow 中启用对应的签名或上传步骤。
+Then enable the matching signing or upload step in the workflow.
 
-## 依赖项说明
+## Dependencies
 
-### 自动下载的依赖:
-- RustFS 二进制文件 (通过 `https://version.rustfs.com/latest.json` 解析版本，并从 GitHub Release Assets 下载)
+### Downloaded automatically:
+- The RustFS binary (version resolved from `https://version.rustfs.com/latest.json`, file downloaded from GitHub Release assets)
 
-### GitHub Actions 使用的组件:
-- `dtolnay/rust-toolchain` - Rust 工具链
-- `Swatinem/rust-cache` - Rust 缓存加速
-- `actions/setup-node` - Node.js 环境
-- `actions/upload-artifact` - 构建产物上传
-- `softprops/action-gh-release` - 自动创建 Release
+### Actions used:
+- `dtolnay/rust-toolchain` - Rust toolchain
+- `Swatinem/rust-cache` - Rust build cache
+- `actions/setup-node` - Node.js
+- `actions/upload-artifact` - artifact upload
+- `softprops/action-gh-release` - GitHub Release upload
 
-## 优化建议
+## Notes
 
-1. **缓存优化**: 已配置 Rust 和 Node.js 缓存，加速编译
-2. **并行构建**: 三个平台同时编译，节省时间
-3. **失败容错**: 单个平台失败不影响其他平台编译
-4. **自动化发布**: Tag 推送后自动发布，无需手动操作
+1. **Caching**: Rust and Node.js caches are already configured.
+2. **Parallel builds**: the three desktop platforms build at the same time.
+3. **Failure isolation**: one platform failing does not cancel the others.
+4. **Manual desktop publish**: tag and Release events no longer start GitHub-hosted runners.
 
-## 本地测试工作流
+## Test workflows locally
 
-### 快速开始 - Pre-commit 检查
+### Pre-commit checks
 
-**推荐: 在提交代码前运行所有检查**
+**Run every check before you commit:**
 
 ```bash
 make pre-commit
 ```
 
-这个命令会自动运行所有 CI 检查项:
-- ✅ 代码格式检查 (`cargo fmt`)
-- ✅ Clippy 静态分析 (`cargo clippy`)
-- ✅ 前端构建 (`trunk build`)
-- ✅ 单元测试 (`cargo test`)
+That runs:
+- Formatting (`cargo fmt`)
+- Clippy (`cargo clippy`)
+- Frontend build (`trunk build`)
+- Unit tests (`cargo test`)
 
-**单独运行检查:**
+**Run one check:**
 ```bash
-make check-fmt      # 仅检查格式
-make check-clippy   # 仅运行 Clippy
-make check-frontend # 仅构建前端
-make check-test     # 仅运行测试
-make fix-fmt        # 自动修复格式
+make check-fmt      # formatting only
+make check-clippy   # Clippy only
+make check-frontend # frontend build only
+make check-test     # tests only
+make fix-fmt        # rewrite formatting
 ```
 
-详细使用说明请参考: [本地测试指南](TESTING.md)
+See the [local testing guide](TESTING.md).
 
-### 使用 Makefile 和 act 工具
+### Makefile and act
 
-项目提供了 Makefile 来简化本地测试 GitHub Actions 工作流的流程。
+The Makefile wraps local GitHub Actions runs through `act`.
 
-**安装 act 工具:**
+**Install act:**
 ```bash
 make install-act
 ```
 
-**常用命令:**
+**Common commands:**
 ```bash
-# 查看所有可用命令
+# List targets
 make help
 
-# 本地运行 CI 工作流 (快速测试)
+# Run the CI workflow locally (quick)
 make test-ci
 
-# 运行完整的 CI 检查
+# Run the full CI checks
 make test-ci-full
 
-# 列出所有工作流任务
+# List workflow jobs
 make list-jobs
 
-# 仅测试代码格式化
+# Formatting only
 make test-fmt
 
-# 仅测试 clippy 检查
+# Clippy only
 make test-clippy
 
-# 清理 act 缓存
+# Clear the act cache
 make clean
 ```
 
-**注意事项:**
-- 首次运行会下载 Docker 镜像,可能需要几分钟
-- 需要确保 Docker Desktop 已安装并运行
-- 本地测试使用 Linux 容器,行为可能与实际 CI 环境略有差异
-- build 工作流包含平台特定步骤,本地测试可能无法完全模拟
+**Notes:**
+- The first run downloads a Docker image and can take a few minutes
+- Docker Desktop must be installed and running
+- Local runs use a Linux container, so they can differ slightly from CI
+- The build workflow has platform-specific steps that a local run cannot fully reproduce
 
-### 手动使用 act
-
-如果需要更细粒度的控制:
+### Call act directly
 
 ```bash
-# 查看 CI 工作流的所有任务
+# List CI jobs
 act -W .github/workflows/ci.yml -l
 
-# 运行特定任务
+# Run one job
 act push -W .github/workflows/ci.yml -j check
 
-# 查看将要执行的命令 (dry run)
+# Dry run
 act push -W .github/workflows/ci.yml -n
 
-# 使用详细输出
+# Verbose output
 act push -W .github/workflows/ci.yml --verbose
 ```
 
-## 维护注意事项
+## Maintenance
 
-- 定期检查 GitHub Actions 的使用配额
-- 保持依赖版本更新
-- 监控 RustFS 二进制文件下载地址的可用性
-- 及时处理编译失败的通知
-- 推送前使用 `make test-ci` 本地验证工作流
+- Automatic jobs no longer spend GitHub-hosted minutes; manual desktop builds still do
+- Keep dependency versions current
+- Watch that the RustFS binary download URL stays valid
+- Fix failed builds when they are reported
+- Run `make test-ci` before pushing workflow changes

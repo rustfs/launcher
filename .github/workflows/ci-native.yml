@@ -1,0 +1,59 @@
+name: CI Native (manual, GitHub-hosted)
+
+# Manual only. These jobs compile and execute tests on Windows and macOS.
+# Cross-compiling them on Linux would not run the same binaries: the network
+# harness is executed on the host, macOS runs the full cargo test suite, and
+# Windows still compiles the Tauri targets that fail to launch under WebView2.
+# The org has no self-hosted macOS or Windows runners, so this workflow uses
+# billed GitHub-hosted runners and is not started by push, pull_request,
+# schedule, or tag events.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-native:
+    name: Native tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Run backend Clippy
+        run: cargo clippy -p rustfs-launcher --all-targets --all-features -- -D warnings
+
+      - name: Compile tests
+        run: cargo test -p rustfs-launcher --all-features --locked --no-run
+
+      - name: Run portable network tests
+        shell: bash
+        run: |
+          test_binary="target/portable-network-tests"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            test_binary="${test_binary}.exe"
+          fi
+          rustc --edition=2021 --test src-tauri/src/network.rs -o "$test_binary"
+          "$test_binary"
+
+      - name: Run tests
+        # The Tauri-linked lib test harness fails to start on Windows GHA with
+        # STATUS_ENTRYPOINT_NOT_FOUND (WebView2/COM loader). Windows cfg code is
+        # still compiled by clippy --all-targets and cargo test --no-run.
+        if: runner.os != 'Windows'
+        run: cargo test -p rustfs-launcher --all-features --locked
