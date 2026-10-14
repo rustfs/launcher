@@ -52,8 +52,19 @@ body {
     linear-gradient(145deg, #ffffff 0%, var(--bg-page) 52%, var(--bg-page-accent) 100%);
   background-size: 28px 28px, 28px 28px, auto, auto;
   color: var(--text-primary);
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   overflow: hidden;
+}
+
+/* CJK glyphs differ between Chinese and Japanese, so each gets its own fonts. */
+body:lang(zh) {
+  font-family: "Avenir Next", "IBM Plex Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body:lang(ja) {
+  font-family: "Avenir Next", "IBM Plex Sans", "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
 }
 
 button,
@@ -65,9 +76,53 @@ input {
   display: grid;
   grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
   gap: 22px;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   padding: 22px;
   overflow: hidden;
+}
+
+.tips-banner {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 22px;
+  border-bottom: 1px solid rgba(255, 138, 31, 0.28);
+  background: var(--brand-orange-soft);
+  color: #9a4a00;
+  font-size: 0.9rem;
+}
+
+.tips-banner-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--brand-orange);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.tips-banner-text {
+  flex: 1;
+}
+
+.tips-banner-close {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.tips-banner-close:hover {
+  opacity: 1;
 }
 
 .sidebar {
@@ -129,6 +184,39 @@ input {
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+.lang-switch {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 1;
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.lang-option {
+  min-width: 34px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.lang-option:hover {
+  color: var(--text-primary);
+}
+
+.lang-option.active {
+  background: var(--brand-blue-soft);
+  color: var(--brand-blue-strong);
+  font-weight: 600;
 }
 
 .header h1 {
