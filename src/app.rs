@@ -266,6 +266,8 @@ pub fn App() -> impl IntoView {
         save_config(&config.get());
     });
 
+    // Dismissal lasts for this session only so the warning returns on restart.
+    let (show_tips, set_show_tips) = signal(true);
     let (toasts, set_toasts) = signal(Vec::<ToastMessage>::new());
     let (is_running, set_is_running) = signal(false);
     let (app_logs, set_app_logs) = signal(VecDeque::<LogEntry>::new());
@@ -965,6 +967,19 @@ pub fn App() -> impl IntoView {
 
     view! {
         <style>{LOGS_CSS}</style>
+        {move || show_tips.get().then(|| view! {
+            <div class="tips-banner" role="note">
+                <span class="tips-banner-icon" aria-hidden="true">"!"</span>
+                <span class="tips-banner-text">"桌面版本不建议在生产使用"</span>
+                <button
+                    class="tips-banner-close"
+                    aria-label="关闭提示"
+                    on:click=move |_| set_show_tips.set(false)
+                >
+                    "×"
+                </button>
+            </div>
+        })}
         <main class="container">
             <Toast toasts=toasts remove_toast=remove_toast />
 
