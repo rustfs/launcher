@@ -9,10 +9,16 @@ Linux 不是发布目标。启动器在 Linux 上会拒绝解析平台二进制�
 
 ## 版本约定
 
-- Git tag 是 Launcher 版本，必须符合 SemVer，例如 `v0.2.0`。
-- 发布构建会去除 tag 的 `v` 前缀并写入 Tauri 和 Cargo 包版本。
+- Launcher 版本跟随上游 RustFS：`upstream-sync` 工作流发现上游新版本后，按上游
+  `latest.json` 报告的原样打 tag（目前不带 `v`，例如 `1.0.1`），因此 Launcher
+  `1.0.1` 默认内置 RustFS `1.0.1`。
+- tag 去掉可选的 `v` 前缀后必须符合 SemVer，发布构建会把它写入 Tauri 和 Cargo
+  包版本；仓库中的 `0.1.0` 只是占位值，不需要手动修改。
 - 构建时解析到的上游 RustFS 版本通过 `RUSTFS_VERSION` 编译进 Launcher。
 - 手动触发构建时可用 `rustfs_tag` 指定内置版本；未指定时使用 RustFS 最新版。
+- 只修改 Launcher 本身时没有独立的版本号空间。`upstream-sync` 用
+  `git describe --tags --abbrev=0` 与上游版本做字符串比较，最新 tag 与上游不一致
+  就会触发构建，所以单独发版前要先确认不会被同步工作流反复触发。
 
 ## 更新签名
 
@@ -35,14 +41,23 @@ GitHub Actions Secrets：
 
 ## 发布过程
 
-推送版本 tag 后，构建工作流会：
+正常情况下发布全自动完成：`upstream-sync` 每小时检查一次上游，发现新版本后推送
+tag，再执行 `gh workflow run build.yml --ref <tag>`。之所以显式触发，是因为用
+`GITHUB_TOKEN` 推送的 tag 不会触发其他工作流。从上游发版到 Launcher 安装包发布，
+通常不超过两小时（最多等一小时检查，再加约 40 分钟构建）。
+
+在 tag 上运行的构建（自动同步、手动推送 `*.*.*` tag、发布 GitHub Release）会：
 
 1. 校验并注入 Launcher 版本。
-2. 下载该发布对应的 RustFS 二进制文件。
-3. 构建 macOS Apple Silicon、macOS Intel 和 Windows x86_64 安装包。
+2. 下载内置的 RustFS 二进制文件（默认上游最新版），并用 `SHA256SUMS` 校验。
+3. 构建 macOS Apple Silicon、macOS Intel 和 Windows x86_64 安装包；上游该版本没有
+   对应平台资源时跳过该平台（例如 `1.0.1` 没有 macOS Intel 包）。
 4. 生成 Tauri Updater 产物及 `.sig` 签名。
-5. 汇总全部平台并生成 `latest.json`。
-6. 将安装包、签名和更新清单上传到同一个 GitHub Release。
+5. 汇总已构建的平台并生成 `latest.json`。
+6. 将安装包、签名和更新清单上传到同一个 GitHub Release，并同步到 Cloudflare R2。
+
+在分支上手动运行并填写 `tag` 时默认只演练，勾选 `publish` 才会发布；不填 `tag`
+则是 `dev-<sha>` 开发构建，不生成 Updater 产物。
 
 客户端使用以下固定地址检查更新：
 

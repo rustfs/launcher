@@ -16,24 +16,38 @@
 - 前端构建验证
 - 单元测试运行
 
-### 2. Build and Release 工作流 (`.github/workflows/build.yml`)
+### 2. Upstream Sync 工作流 (`.github/workflows/upstream-sync.yml`)
 
 **触发条件:**
-- 推送 tag（例如: `0.1.0`, `v1.0.0`）
+- 每小时定时运行
+- 手动触发（可选 `force_build`，版本未变也强制构建）
+
+**功能:**
+- 读取 `https://version.rustfs.com/latest.json`，与 `git describe --tags --abbrev=0` 比较（忽略 `v` 前缀）
+- 发现新版本时按上游原样打 tag（例如 `1.0.1`）并推送
+- 执行 `gh workflow run build.yml --ref <tag>` 触发构建（`GITHUB_TOKEN` 推送的 tag 不会自动触发其他工作流）
+
+### 3. Build and Release 工作流 (`.github/workflows/build.yml`)
+
+**触发条件:**
+- 推送匹配 `*.*.*` 的 tag（例如 `1.0.1`）
 - 发布 Release（当 Release 状态变为 published 时）
-- 手动触发 (workflow_dispatch)
+- 手动触发 (workflow_dispatch)，以及 Upstream Sync 在 tag 上的触发
 
 **支持平台:**
 - **macOS Apple Silicon** (aarch64)
 - **macOS Intel** (x86_64)
 - **Windows** (x86_64)
 
+上游该版本没有某个平台的资源时，该平台会被跳过（例如 `1.0.1` 没有 macOS Intel 包）。
+
 **产物类型:**
-- macOS: `.app.zip` 压缩包
-- Windows: `.msi` 安装包和 `.exe` 安装程序
+- macOS: `.dmg`、`.app.zip`，以及 Updater 用的 `.app.tar.gz` 和 `.sig`
+- Windows: NSIS 安装程序 `-setup.exe` 和 `.sig`（不生成 `.msi`）
+- 汇总: `latest.json`（Updater 清单）和 `SHA256SUMS`
 
 **产物命名格式:**
-- `rustfs-launcher-{platform}-{arch}-{version}.{ext}` (例如: `rustfs-launcher-macos-aarch64-v0.1.0.dmg`)
+- `rustfs-launcher-{platform}-{arch}-{version}.{ext}` (例如: `rustfs-launcher-macos-aarch64-1.0.1.dmg`)
 - `rustfs-launcher-{platform}-{arch}-latest.{ext}` (最新版本链接)
 
 **产物上传位置:**
@@ -44,50 +58,37 @@
 
 ### 发布新版本
 
-1. **更新版本号**
+正常情况下无需手动操作：上游 `rustfs/rustfs` 发布新版本后，Upstream Sync 会自动打
+tag 并触发构建、发布。Launcher 版本号跟随上游 RustFS 版本。
 
-   编辑以下文件中的版本号:
-   ```
-   src-tauri/Cargo.toml
-   src-tauri/tauri.conf.json
-   ```
+需要手动发布时：
 
-2. **提交更改**
+1. **版本号**
+
+   不需要修改 `src-tauri/Cargo.toml` 或 `src-tauri/tauri.conf.json`。构建时会把 tag
+   （去掉可选的 `v` 前缀，必须符合 SemVer）写入这两个文件。
+
+2. **发布方式（选择其一）**
+
+   **方式一：推送 tag**
    ```bash
-   git add .
-   git commit -m "chore: bump version to v0.1.0"
-   git push origin main
+   git tag 1.0.1
+   git push origin 1.0.1
    ```
 
-3. **发布方式（选择其一）**
-
-   **方式一：推送 tag（自动创建 Release）**
+   **方式二：通过 GitHub Web 界面或 CLI 发布 Release**
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   gh release create 1.0.1 --title "1.0.1" --notes "Release notes"
    ```
 
-   **方式二：通过 GitHub Web 界面创建 Release**
-   - 访问仓库的 "Releases" 页面
-   - 点击 "Draft a new release"
-   - 创建新的 tag（如 `v0.1.0`）或选择已有 tag
-   - 填写 Release 标题和描述
-   - 点击 "Publish release"
+   注意：只改 Launcher 时没有独立的版本号空间，tag 与上游版本不一致会被 Upstream Sync
+   视为“有新版本”，详见 [docs/SELF_UPDATE.md](../docs/SELF_UPDATE.md#版本约定)。
 
-   **方式三：通过 GitHub CLI**
-   ```bash
-   gh release create v0.1.0 --title "v0.1.0" --notes "Release notes"
-   ```
+3. **等待编译完成**
 
-4. **等待编译完成**
+   在 Actions 页面查看进度：https://github.com/rustfs/launcher/actions
 
-   当 tag 推送或 Release 发布（published）后，GitHub Actions 会自动触发编译。
-   访问 GitHub Actions 页面查看编译进度:
-   ```
-   https://github.com/YOUR_USERNAME/YOUR_REPO/actions
-   ```
-
-5. **发布完成**
+4. **发布完成**
 
     编译成功后会自动:
 
@@ -98,28 +99,33 @@
 
 1. 访问 GitHub Actions 页面
 2. 选择 "Build and Release" 工作流
-3. 点击 "Run workflow" 按钮
-4. 选择分支并运行
+3. 点击 "Run workflow" 按钮，选择分支或 tag 并运行
+
+可选输入:
+- `tag`: 以发布模式构建该版本。在分支上运行时默认只演练，不上传
+- `publish`: 配合 `tag` 使用，勾选后才上传到 Release 和 R2
+- `rustfs_tag`: 指定内置的 RustFS 版本，默认上游最新版
+
+在 tag 上运行（Use workflow from 选择 tag）会直接按正式发布处理并上传。
+不填 `tag` 在分支上运行时为 `dev-<sha>` 开发构建，不生成 Updater 产物。
 
 ## 编译产物说明
 
-编译完成后，会生成以下文件:
+以 `1.0.1` 为例，Release 中包含:
 
 ```
-rustfs-launcher-macos-aarch64/
-  ├── rustfs-launcher-macos-aarch64-v0.1.0.app.zip
-  └── rustfs-launcher-macos-aarch64-latest.zip
-
-rustfs-launcher-macos-x86_64/
-  ├── rustfs-launcher-macos-x86_64-v0.1.0.app.zip
-  └── rustfs-launcher-macos-x86_64-latest.zip
-
-rustfs-launcher-windows-x86_64/
-  ├── rustfs-launcher-windows-x86_64-v0.1.0.msi
-  ├── rustfs-launcher-windows-x86_64-v0.1.0-setup.exe
-  ├── rustfs-launcher-windows-x86_64-latest.msi
-  └── rustfs-launcher-windows-x86_64-latest-setup.exe
+rustfs-launcher-macos-aarch64-1.0.1.dmg
+rustfs-launcher-macos-aarch64-1.0.1.app.zip
+rustfs-launcher-macos-aarch64-1.0.1.app.tar.gz(.sig)
+rustfs-launcher-macos-aarch64-latest.{dmg,app.zip,app.tar.gz(.sig)}
+rustfs-launcher-windows-x86_64-1.0.1-setup.exe(.sig)
+rustfs-launcher-windows-x86_64-latest-setup.exe(.sig)
+rustfs-launcher-windows-x86_64-latest.exe
+latest.json
+SHA256SUMS
 ```
+
+上游提供 macOS Intel 资源时，还会有对应的 `rustfs-launcher-macos-x86_64-*` 文件。
 
 ## 常见问题
 
@@ -131,16 +137,9 @@ rustfs-launcher-windows-x86_64/
 
 ### 2. 如何修改编译目标?
 
-编辑 `.github/workflows/build.yml` 文件中的 `matrix` 配置:
-
-```yaml
-strategy:
-  matrix:
-    include:
-      - platform: 'ubuntu-latest'  # 添加 Linux 支持
-        target: 'x86_64-unknown-linux-gnu'
-        # ...
-```
+编辑 `.github/workflows/build.yml` 中 `build` job 的 `matrix.include`。启动器只支持
+macOS 和 Windows（`src-tauri/src/platform.rs` 会拒绝其他平台），新增平台需要同时修改
+`platform.rs`、`build.sh`/`build.bat` 和 `scripts/select-rustfs-asset.sh`。
 
 ### 3. 如何添加代码签名?
 
@@ -179,10 +178,10 @@ strategy:
 
 ## 优化建议
 
-1. **缓存优化**: 已配置 Rust 和 Node.js 缓存，加速编译
+1. **缓存优化**: 已配置 Rust 缓存，加速编译
 2. **并行构建**: 三个平台同时编译，节省时间
 3. **失败容错**: 单个平台失败不影响其他平台编译
-4. **自动化发布**: Tag 推送后自动发布，无需手动操作
+4. **自动化发布**: 上游发版后由 Upstream Sync 自动打 tag 并发布，无需手动操作
 
 ## 本地测试工作流
 
@@ -234,11 +233,11 @@ make test-ci-full
 # 列出所有工作流任务
 make list-jobs
 
-# 仅测试代码格式化
-make test-fmt
+# 仅检查代码格式化
+make check-fmt
 
-# 仅测试 clippy 检查
-make test-clippy
+# 仅运行 clippy 检查
+make check-clippy
 
 # 清理 act 缓存
 make clean
