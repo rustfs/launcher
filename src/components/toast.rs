@@ -1,3 +1,4 @@
+use crate::i18n::use_i18n;
 use leptos::prelude::*;
 
 #[derive(Clone, PartialEq, Copy)]
@@ -19,6 +20,7 @@ pub fn Toast(
     #[prop(into)] toasts: Signal<Vec<ToastMessage>>,
     #[prop(into)] remove_toast: Callback<u64>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     view! {
         <div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
             <For
@@ -47,7 +49,7 @@ pub fn Toast(
                     <span class="toast-text">{toast.message}</span>
                     <button
                         class="toast-close"
-                        aria-label="Dismiss notification"
+                        aria-label=move || i18n.t().dismiss_notification
                         on:click=move |_| remove_toast.run(toast.id)
                     >
                         "×"

@@ -58,6 +58,15 @@ body {
   overflow: hidden;
 }
 
+/* CJK glyphs differ between Chinese and Japanese, so each gets its own fonts. */
+body:lang(zh) {
+  font-family: "Avenir Next", "IBM Plex Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body:lang(ja) {
+  font-family: "Avenir Next", "IBM Plex Sans", "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+}
+
 button,
 input {
   font: inherit;
@@ -175,6 +184,39 @@ input {
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+.lang-switch {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 1;
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.lang-option {
+  min-width: 34px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.lang-option:hover {
+  color: var(--text-primary);
+}
+
+.lang-option.active {
+  background: var(--brand-blue-soft);
+  color: var(--brand-blue-strong);
+  font-weight: 600;
 }
 
 .header h1 {

@@ -1,6 +1,7 @@
 mod app;
 mod components;
 mod helpers;
+mod i18n;
 mod types;
 
 use app::*;

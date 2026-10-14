@@ -1,3 +1,4 @@
+use crate::i18n::ActionLabel;
 use crate::types::{DEFAULT_ACCESS_KEY, DEFAULT_HOST, DEFAULT_SECRET_KEY};
 use std::net::IpAddr;
 
@@ -47,23 +48,9 @@ pub fn refuses_public_default_credentials(
             || credential_is_published_default(secret_key, DEFAULT_SECRET_KEY))
 }
 
-pub fn public_default_credentials_message(host: &str) -> String {
-    format!(
-        "Refusing to expose the default rustfsadmin credentials on {host}. Bind to 127.0.0.1, or set a unique access key and secret key. Empty credentials also fall back to rustfsadmin"
-    )
-}
-
-pub fn rustfs_source_label(managed: bool) -> &'static str {
-    if managed {
-        "installed"
-    } else {
-        "bundled"
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrimaryAction {
-    pub label: &'static str,
+    pub label: ActionLabel,
     pub disabled: bool,
     pub lock_form: bool,
     pub stops_service: bool,
@@ -76,11 +63,11 @@ pub struct PrimaryAction {
 pub fn primary_action(can_stop: bool, busy: bool, data_path_empty: bool) -> PrimaryAction {
     PrimaryAction {
         label: if busy && !can_stop {
-            "Launching…"
+            ActionLabel::Launching
         } else if can_stop {
-            "Stop RustFS"
+            ActionLabel::Stop
         } else {
-            "Launch RustFS"
+            ActionLabel::Launch
         },
         disabled: busy || data_path_empty,
         lock_form: can_stop || busy,
@@ -88,11 +75,11 @@ pub fn primary_action(can_stop: bool, busy: bool, data_path_empty: bool) -> Prim
     }
 }
 
-pub fn rustfs_idle_message(notes: Option<&str>) -> String {
+pub fn rustfs_idle_message(notes: Option<&str>, up_to_date: &str) -> String {
     notes
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("RustFS is up to date.")
+        .unwrap_or(up_to_date)
         .to_string()
 }
 
@@ -116,10 +103,10 @@ pub fn progress_percent(downloaded: f64, content_length: Option<f64>) -> Option<
 #[cfg(test)]
 mod tests {
     use super::{
-        display_host, primary_action, progress_percent, public_default_credentials_message,
-        refuses_public_default_credentials, rustfs_idle_message, rustfs_source_label,
-        status_poll_is_current,
+        display_host, primary_action, progress_percent, refuses_public_default_credentials,
+        rustfs_idle_message, status_poll_is_current,
     };
+    use crate::i18n::ActionLabel;
 
     #[test]
     fn display_host_rewrites_wildcards_and_wraps_ipv6() {
@@ -135,37 +122,38 @@ mod tests {
     }
 
     #[test]
-    fn rustfs_labels_describe_the_binary_in_use() {
-        assert_eq!(rustfs_source_label(true), "installed");
-        assert_eq!(rustfs_source_label(false), "bundled");
+    fn rustfs_idle_message_prefers_backend_notes() {
         assert_eq!(
-            rustfs_idle_message(Some("RustFS 1.0.0-rc.4 has no macOS (Intel) build.")),
+            rustfs_idle_message(
+                Some("RustFS 1.0.0-rc.4 has no macOS (Intel) build."),
+                "up to date"
+            ),
             "RustFS 1.0.0-rc.4 has no macOS (Intel) build."
         );
-        assert_eq!(rustfs_idle_message(Some("  ")), "RustFS is up to date.");
-        assert_eq!(rustfs_idle_message(None), "RustFS is up to date.");
+        assert_eq!(rustfs_idle_message(Some("  "), "up to date"), "up to date");
+        assert_eq!(rustfs_idle_message(None, "up to date"), "up to date");
     }
 
     #[test]
     fn a_second_click_cannot_stop_a_launch_that_has_not_finished() {
         let launching = primary_action(false, true, false);
-        assert_eq!(launching.label, "Launching…");
+        assert_eq!(launching.label, ActionLabel::Launching);
         assert!(launching.disabled);
         assert!(launching.lock_form);
         assert!(!launching.stops_service);
 
         let stopping = primary_action(true, true, false);
-        assert_eq!(stopping.label, "Stop RustFS");
+        assert_eq!(stopping.label, ActionLabel::Stop);
         assert!(stopping.disabled);
         assert!(!stopping.stops_service);
 
         let running = primary_action(true, false, false);
-        assert_eq!(running.label, "Stop RustFS");
+        assert_eq!(running.label, ActionLabel::Stop);
         assert!(!running.disabled);
         assert!(running.stops_service);
 
         let idle = primary_action(false, false, true);
-        assert_eq!(idle.label, "Launch RustFS");
+        assert_eq!(idle.label, ActionLabel::Launch);
         assert!(idle.disabled);
         assert!(!idle.lock_form);
     }
@@ -213,8 +201,5 @@ mod tests {
             Some("ak-unique"),
             Some("sk-unique"),
         ));
-        let message = public_default_credentials_message("0.0.0.0");
-        assert!(message.contains("0.0.0.0"));
-        assert!(message.contains("unique access key"));
     }
 }
