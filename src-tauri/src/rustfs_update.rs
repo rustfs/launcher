@@ -475,24 +475,189 @@ fn restore_backup(backup: Option<PathBuf>, target: &Path) {
     }
 }
 
-/// Extracts the archive and optionally smoke-tests it before the live binary
-/// is replaced. A failed smoke test leaves the current install untouched.
+/// Extracts the archive, rewrites a non-relocatable macOS liblzma dependency
+/// when the launcher has a vendored copy, and optionally smoke-tests it before
+/// the live binary is replaced. A failed smoke test leaves the current install
+/// untouched, including a liblzma that was already beside it.
 pub(crate) fn stage_update(archive: &Path, staged: &Path, run_smoke: bool) -> Result<String> {
+    stage_update_with_lzma(archive, staged, run_smoke, vendored_liblzma().as_deref())
+}
+
+pub(crate) fn stage_update_with_lzma(
+    archive: &Path,
+    staged: &Path,
+    run_smoke: bool,
+    liblzma: Option<&Path>,
+) -> Result<String> {
     extract_binary(archive, staged).inspect_err(|_| {
         let _ = std::fs::remove_file(staged);
     })?;
 
+    let bytes = match std::fs::read(staged) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let _ = std::fs::remove_file(staged);
+            return Err(Error::Io(error));
+        }
+    };
+    let plan = match crate::macho::inspect(&bytes) {
+        Ok(plan) => plan,
+        Err(error) => {
+            let _ = std::fs::remove_file(staged);
+            return Err(error);
+        }
+    };
+    if let Some(plan) = plan.as_ref() {
+        if !plan.blocked.is_empty() {
+            let message = crate::macho::blocked_message(plan);
+            let _ = std::fs::remove_file(staged);
+            return Err(Error::RustFsUpdate(message));
+        }
+    }
+
+    let needs_liblzma = plan.as_ref().is_some_and(crate::macho::Plan::needs_liblzma);
+    let lzma_dest = staged
+        .parent()
+        .map(|dir| dir.join(crate::macho::LIBLZMA_FILE));
+    let backup = if needs_liblzma {
+        let Some(dest) = lzma_dest.as_ref() else {
+            let _ = std::fs::remove_file(staged);
+            return Err(Error::RustFsUpdate(
+                "staged RustFS binary has no parent directory".to_string(),
+            ));
+        };
+        match move_lzma_aside(dest) {
+            Ok(backup) => backup,
+            Err(error) => {
+                let _ = std::fs::remove_file(staged);
+                return Err(error);
+            }
+        }
+    } else {
+        None
+    };
+
+    if needs_liblzma {
+        let Some(plan) = plan.as_ref() else {
+            restore_sibling_lzma(backup, lzma_dest.as_deref());
+            let _ = std::fs::remove_file(staged);
+            return Err(Error::RustFsUpdate(
+                "missing Mach-O plan for a liblzma dependency".to_string(),
+            ));
+        };
+        if let Err(error) = crate::macho::vendor_liblzma(staged, liblzma, plan) {
+            restore_sibling_lzma(backup, lzma_dest.as_deref());
+            let _ = std::fs::remove_file(staged);
+            return Err(error);
+        }
+        if !plan.liblzma.is_empty() {
+            add_app_log(format!(
+                "Rewrote RustFS liblzma load commands to {}:\n{}",
+                crate::macho::LIBLZMA_LOAD,
+                plan.liblzma.join("\n")
+            ));
+        }
+    }
+
     if !run_smoke {
+        discard_lzma_backup(backup);
         return Ok(String::new());
     }
 
     match smoke_test(staged) {
-        Ok(reported) => Ok(reported),
+        Ok(reported) => {
+            discard_lzma_backup(backup);
+            Ok(reported)
+        }
         Err(error) => {
+            if needs_liblzma {
+                restore_sibling_lzma(backup, lzma_dest.as_deref());
+            }
             let _ = std::fs::remove_file(staged);
             Err(error)
         }
     }
+}
+
+fn lzma_backup_path(dest: &Path) -> PathBuf {
+    let mut name = dest
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_else(|| std::ffi::OsString::from(crate::macho::LIBLZMA_FILE));
+    name.push(".previous");
+    dest.with_file_name(name)
+}
+
+fn move_lzma_aside(dest: &Path) -> Result<Option<PathBuf>> {
+    if !dest.exists() {
+        return Ok(None);
+    }
+    let backup = lzma_backup_path(dest);
+    let _ = std::fs::remove_file(&backup);
+    std::fs::rename(dest, &backup).map_err(Error::Io)?;
+    Ok(Some(backup))
+}
+
+fn restore_sibling_lzma(backup: Option<PathBuf>, dest: Option<&Path>) {
+    let Some(dest) = dest else {
+        return;
+    };
+    match backup {
+        Some(backup) => {
+            let _ = std::fs::remove_file(dest);
+            if std::fs::rename(&backup, dest).is_err() && std::fs::copy(&backup, dest).is_ok() {
+                let _ = std::fs::remove_file(&backup);
+            }
+        }
+        None => {
+            let _ = std::fs::remove_file(dest);
+        }
+    }
+}
+
+fn discard_lzma_backup(backup: Option<PathBuf>) {
+    if let Some(path) = backup {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn vendored_liblzma() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(app) = acquire(&APP_HANDLE).as_ref() {
+        if let Ok(resource_dir) = app.path().resource_dir() {
+            candidates.push(
+                resource_dir
+                    .join("binaries")
+                    .join(crate::macho::LIBLZMA_FILE),
+            );
+            candidates.push(resource_dir.join(crate::macho::LIBLZMA_FILE));
+        }
+    }
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            candidates.push(
+                exe_dir
+                    .join("../Resources/binaries")
+                    .join(crate::macho::LIBLZMA_FILE),
+            );
+            candidates.push(
+                exe_dir
+                    .join("resources/binaries")
+                    .join(crate::macho::LIBLZMA_FILE),
+            );
+            candidates.push(exe_dir.join("binaries").join(crate::macho::LIBLZMA_FILE));
+        }
+    }
+    if cfg!(debug_assertions) {
+        if let Ok(cwd) = std::env::current_dir() {
+            candidates.push(
+                cwd.join("src-tauri/binaries")
+                    .join(crate::macho::LIBLZMA_FILE),
+            );
+            candidates.push(cwd.join("binaries").join(crate::macho::LIBLZMA_FILE));
+        }
+    }
+    candidates.into_iter().find(|path| path.is_file())
 }
 
 pub(crate) fn commit_update(
@@ -609,7 +774,8 @@ mod tests {
     use super::{
         asset_name, asset_url, commit_update, digest_for_asset, discard_backup, evaluate_update,
         extract_binary, hash_file, parse_latest_feed, sha256_hex, smoke_test, stage_update,
-        swap_in_place, validate_release_tag, verify_sha256, FeedSnapshot, LatestRelease, Stage,
+        stage_update_with_lzma, swap_in_place, validate_release_tag, verify_sha256, FeedSnapshot,
+        LatestRelease, Stage,
     };
     use crate::binaries::{effective_version_from, installed_binary_from, EffectiveVersion};
     use crate::error::Error;
@@ -867,6 +1033,101 @@ B34390D7CE5C1797B4A127261FEE1926C2AED1D280E1EC59F149F255902221AF *rustfs-windows
 
         let missing = dir.path().join("missing-binary");
         assert!(smoke_test(&missing).is_err());
+    }
+
+    #[test]
+    fn stage_update_rejects_a_non_relocatable_library_and_quotes_the_load_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("release.zip");
+        let starred = "/opt/homebrew/*/libfoo.1.dylib";
+        let openssl = "/usr/local/opt/openssl@3/lib/libssl.3.dylib";
+        let image = crate::macho::fixture(&[openssl, starred], None, 1 << 16, 1 << 16);
+        write_zip(&archive, &[("rustfs", image.as_slice())]);
+        let staged = dir.path().join("rustfs.staged");
+
+        let error = stage_update_with_lzma(&archive, &staged, false, None).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(openssl), "{message}");
+        assert!(message.contains(starred), "{message}");
+        assert!(message.contains("not relocatable"), "{message}");
+        assert!(!staged.exists());
+        assert!(!dir.path().join(crate::macho::LIBLZMA_FILE).exists());
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn stage_update_vendors_homebrew_liblzma_beside_the_staged_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("release.zip");
+        let homebrew = "/opt/homebrew/opt/xz/lib/liblzma.5.dylib";
+        let image = crate::macho::fixture(
+            &[homebrew, "/usr/lib/libSystem.B.dylib"],
+            None,
+            14 << 16,
+            (14 << 16) | (3 << 8),
+        );
+        write_zip(&archive, &[("rustfs", image.as_slice())]);
+        let vendored = dir.path().join("source.dylib");
+        std::fs::write(
+            &vendored,
+            crate::macho::fixture(
+                &["/usr/lib/libSystem.B.dylib"],
+                Some("/opt/homebrew/opt/xz/lib/liblzma.5.dylib"),
+                14 << 16,
+                (14 << 16) | (4 << 8),
+            ),
+        )
+        .unwrap();
+        let managed = dir.path().join("managed");
+        std::fs::create_dir(&managed).unwrap();
+        let staged = managed.join("rustfs.staged");
+
+        stage_update_with_lzma(&archive, &staged, false, Some(&vendored)).unwrap();
+
+        let plan = crate::macho::inspect(&std::fs::read(&staged).unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(plan.needs_liblzma());
+        assert!(plan.liblzma.is_empty(), "{:?}", plan.liblzma);
+        assert!(plan.blocked.is_empty());
+        assert!(managed.join(crate::macho::LIBLZMA_FILE).is_file());
+    }
+
+    #[test]
+    fn failed_smoke_restores_the_liblzma_that_was_already_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let managed = dir.path().join("managed");
+        std::fs::create_dir(&managed).unwrap();
+        let existing = managed.join(crate::macho::LIBLZMA_FILE);
+        std::fs::write(&existing, b"previous-lzma").unwrap();
+
+        let archive = dir.path().join("release.zip");
+        let image = crate::macho::fixture(
+            &["/opt/homebrew/opt/xz/lib/liblzma.5.dylib"],
+            None,
+            14 << 16,
+            (14 << 16) | (3 << 8),
+        );
+        write_zip(&archive, &[("rustfs", image.as_slice())]);
+        let vendored = dir.path().join("source.dylib");
+        std::fs::write(
+            &vendored,
+            crate::macho::fixture(
+                &["/usr/lib/libSystem.B.dylib"],
+                Some(crate::macho::LIBLZMA_LOAD),
+                14 << 16,
+                (14 << 16) | (4 << 8),
+            ),
+        )
+        .unwrap();
+        let staged = managed.join("rustfs.staged");
+
+        assert!(stage_update_with_lzma(&archive, &staged, true, Some(&vendored)).is_err());
+        assert!(!staged.exists());
+        assert_eq!(std::fs::read(&existing).unwrap(), b"previous-lzma");
+        assert!(!managed
+            .join(format!("{}.previous", crate::macho::LIBLZMA_FILE))
+            .exists());
     }
 
     #[test]

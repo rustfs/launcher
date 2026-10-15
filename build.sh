@@ -82,10 +82,12 @@ case "$OS" in
             "arm64")
                 echo "Downloading for macOS Apple Silicon (aarch64)..."
                 download_binary "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_RELEASE_TAG}/rustfs-macos-aarch64-${RUSTFS_ASSET_VERSION}.zip" "rustfs-macos-aarch64" "rustfs-macos-aarch64"
+                bash scripts/prepare-macos-rustfs.sh "$BINARIES_DIR/rustfs-macos-aarch64"
                 ;;
             "x86_64")
                 echo "Downloading for macOS Intel (x86_64)..."
                 download_binary "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_RELEASE_TAG}/rustfs-macos-x86_64-${RUSTFS_ASSET_VERSION}.zip" "rustfs-macos-x86_64" "rustfs-macos-x86_64"
+                bash scripts/prepare-macos-rustfs.sh "$BINARIES_DIR/rustfs-macos-x86_64"
                 ;;
             *)
                 echo "✗ Error: Unsupported macOS architecture: $ARCH"
