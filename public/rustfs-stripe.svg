@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="76" height="10" viewBox="0 0 76 10" role="img" aria-label="EC 4+2">
+  <title>EC 4+2</title>
+  <!-- Official stripe signature: 4 Signal shards, then 2 Oxide shards. Gap is 32% of the shard. -->
+  <rect x="0" y="0" width="10" height="10" fill="#0062FF"/>
+  <rect x="13.2" y="0" width="10" height="10" fill="#0062FF"/>
+  <rect x="26.4" y="0" width="10" height="10" fill="#0062FF"/>
+  <rect x="39.6" y="0" width="10" height="10" fill="#0062FF"/>
+  <rect x="52.8" y="0" width="10" height="10" fill="#FF5E14"/>
+  <rect x="66" y="0" width="10" height="10" fill="#FF5E14"/>
+</svg>
