@@ -97,6 +97,19 @@
   --font-sans: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif;
 }
 
+/* Apply the stack on the element that declares lang. Descendants inherit that
+   computed family; headlines, paths, and logs set their own family later. */
+[lang="zh"],
+[lang^="zh-"],
+[lang="ja"],
+[lang^="ja-"],
+[lang="ko"],
+[lang^="ko-"],
+[lang="ar"],
+[lang^="ar-"] {
+  font-family: var(--font-sans);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -830,7 +843,7 @@ input:disabled {
   width: 14px;
   height: 14px;
   margin: 0;
-  border: 1px solid var(--strong);
+  border: 1px solid var(--muted-foreground);
   border-radius: var(--radius);
   background: var(--card);
   display: grid;
@@ -847,6 +860,27 @@ input:disabled {
   width: 8px;
   height: 8px;
   background: var(--primary-foreground);
+}
+
+@media (forced-colors: active) {
+  .auto-scroll-toggle input {
+    appearance: auto;
+    forced-color-adjust: auto;
+    width: auto;
+    height: auto;
+    border: revert;
+    background: revert;
+  }
+
+  .auto-scroll-toggle input:checked {
+    background: revert;
+    border-color: revert;
+  }
+
+  .auto-scroll-toggle input::after,
+  .auto-scroll-toggle input:checked::after {
+    content: none;
+  }
 }
 
 :lang(zh) :is(h1, h2, .summary-card strong, .update-available strong),
