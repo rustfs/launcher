@@ -22,25 +22,56 @@ RustFS Launcher एक छोटा डेस्कटॉप ऐप है ज�
 ## डाउनलोड
 
 अपने सिस्टम के लिए सही फ़ाइल [रिलीज़ पेज](https://github.com/rustfs/launcher/releases) से लें।
+अभी की नवीनतम रिलीज़ **1.0.6** है।
 
 | आपका सिस्टम | फ़ाइल |
 | --- | --- |
-| Windows 10 / 11, 64-बिट | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (लगभग 50 MB) |
-| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS, Intel | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11, 64-बिट | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.dmg` और `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS, Intel (x86_64) | रिलीज़ 1.0.6 में प्रकाशित नहीं |
 
-ARM वाले Windows पर भी यह चलता है — वहाँ x86_64 बिल्ड एमुलेशन के ज़रिये चलता है। Linux के लिए फ़िलहाल कोई पैकेज
+1.0.6 की फ़ाइलें ये हैं: `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg`, और `rustfs-launcher-macos-aarch64-1.0.6.app.zip`।
+`rustfs-launcher-macos-x86_64-*` पैकेज नहीं है, इसलिए Intel Mac पर यह रिलीज़ इंस्टॉल नहीं होती।
+
+ARM वाले Windows पर भी यह चलता है — वहाँ x86_64 बिल्ड एमुलेशन के ज़रिये चलता है। Linux के लिए लॉन्चर का कोई पैकेज
 नहीं है; Linux पर [RustFS बाइनरी](https://github.com/rustfs/rustfs/releases) सीधे चलाइए।
 
 फ़ाइलें बड़ी इसलिए हैं क्योंकि पूरा RustFS सर्वर इंस्टॉलर के अंदर पैक होता है।
+
+उसी रिलीज़ पर `-latest` वाले नाम, संस्करण वाली इंस्टॉलर फ़ाइलों की बाइट-दर-बाइट प्रतिलिपियाँ हैं।
+`rustfs-launcher-windows-x86_64-latest-setup.exe` और `rustfs-launcher-windows-x86_64-latest.exe` वही Windows
+इंस्टॉलर हैं, बस स्थिर नामों पर। macOS की `-latest.dmg` और `-latest.app.zip` भी इसी तरह की प्रतिलिपियाँ हैं।
+संस्करण वाला `-setup.exe` या `.dmg` चुनें।
+
+### डाउनलोड जाँचें
+
+उसी रिलीज़ पेज के **Assets** में इंस्टॉलर के साथ `SHA256SUMS` डाउनलोड करें। हर पंक्ति में SHA-256 हैश और फ़ाइल नाम होता है।
+
+Windows पर, PowerShell में उस फ़ोल्डर से जहाँ इंस्टॉलर है:
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+macOS पर, Terminal में:
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+हैश `SHA256SUMS` में उसी फ़ाइल नाम वाली पंक्ति से मेल खाना चाहिए। अक्षरों का बड़ा-छोटा रूप मायने नहीं रखता।
+अगर `.app.zip` डाउनलोड की है, तो उस फ़ाइल नाम की जाँच उसी तरह करें। बाद की रिलीज़ के लिए उस रिलीज़ के फ़ाइल नाम
+और `SHA256SUMS` इस्तेमाल करें।
 
 ## Windows: शुरू से अंत तक
 
 ### 1. इंस्टॉलर डाउनलोड करें
 
 [रिलीज़ पेज](https://github.com/rustfs/launcher/releases) खोलें, सबसे नई रिलीज़ में **Assets** खोलें और
-`-setup.exe` पर खत्म होने वाली फ़ाइल पर क्लिक करें। Edge और Chrome कभी-कभी कम डाउनलोड होने वाले इंस्टॉलर पर
-चेतावनी देते हैं; पूछे जाने पर **Keep** चुनें।
+`rustfs-launcher-windows-x86_64-<version>-setup.exe` डाउनलोड करें (1.0.6 के लिए
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`)। ऊपर बताए तरीके से `SHA256SUMS` से मिलाएँ। Edge और Chrome
+कभी-कभी कम डाउनलोड होने वाले इंस्टॉलर पर चेतावनी देते हैं; पूछे जाने पर **Keep** चुनें।
 
 ### 2. SmartScreen को पार करें
 
@@ -124,9 +155,10 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ## macOS
 
-1. `.app.zip` को अनज़िप करें और **RustFS Launcher** को **Applications** में खींच दें।
-2. पहली बार खोलने पर रोक लगती है, क्योंकि रिलीज़ बिल्ड Apple से नोटराइज़ नहीं हैं। या तो ऐप पर राइट-क्लिक करके
-   **Open** चुनें, या टर्मिनल से क्वारंटीन फ़्लैग हटाएँ:
+1. `.dmg` खोलें और **RustFS Launcher** को **Applications** में खींच दें। अगर `.app.zip` डाउनलोड की है, तो उसे
+   अनज़िप करके ऐप को उसी तरह खींचें।
+2. पहली बार खोलना रुक जाता है, क्योंकि ये बिल्ड नोटराइज़ नहीं हैं। ऐप पर राइट-क्लिक करके **Open** चुनें और
+   पुष्टि करें। Terminal में क्वारंटीन फ़्लैग हटाना वैकल्पिक है:
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -138,6 +170,23 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 ## विंडो का परिचय
 
 ![पहली बार शुरू करने से पहले का लॉन्चर](docs/images/launcher-ready.png)
+
+### भाषा
+
+भाषा बटन (Globe आइकॉन) हेडर की दाईं ओर ऊपर है। जब इंटरफ़ेस अरबी हो, पूरा पेज मिरर हो जाता है और बटन बाईं ओर दिखता है।
+
+पहली बार खोलने पर, जब तक आपने भाषा नहीं चुनी, ऐप ऑपरेटिंग सिस्टम की भाषा अपनाता है। अगर वह नीचे दी 15 भाषाओं में से एक है तो वही लगती है, नहीं तो अंग्रेज़ी।
+
+ये 15 भाषाएँ अपने नामों से दिखती हैं: English, العربية, 簡體中文, 繁體中文, 日本語, 한국어, Deutsch,
+Français, Español, Português, Italiano, Русский, Türkçe, Bahasa Indonesia, Tiếng Việt। कोड: `en`,
+`ar`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt`, `it`, `ru`, `tr`, `id`, `vi`। सरलीकृत चीनी
+`zh-Hans` और `zh-CN` से आती है। पारंपरिक चीनी `zh-Hant`, `zh-TW`, `zh-HK` और `zh-MO` से आती है।
+
+भाषा चुनते ही वह लागू हो जाती है और याद रहती है। उसके बाद ऑपरेटिंग सिस्टम की भाषा उसे नहीं बदलती।
+
+हिन्दी इन-ऐप भाषा मेनू में नहीं है। जब तक आप कोई भाषा नहीं चुनते, ऊपर वाला नियम लागू रहता है: सिस्टम की भाषा उन 15 में से हो तो वही, नहीं तो अंग्रेज़ी।
+
+ट्रे मेनू (**Show** और **Quit**) और Windows इंस्टॉलर विज़ार्ड अंग्रेज़ी में रहते हैं। macOS डाउनलोड एक डिस्क इमेज है जिसे Applications में खींचा जाता है; वह अनुवादित सेटअप विज़ार्ड नहीं है। भाषा बटन लॉन्चर की विंडो बदलता है।
 
 **स्टेटस बैज।** पहला बैज सर्वर के बारे में है: *Service Online* का मतलब है कि आपके तय किए होस्ट और पोर्ट पर कुछ
 जवाब दे रहा है। दूसरा बताता है कि वह प्रोसेस किसका है:
@@ -193,7 +242,7 @@ Version & Updates कार्ड में **Check for Updates** दबाए�
 **विंडो गायब हो गई** — बंद करने पर वह सिर्फ़ छिपती है। Windows पर ट्रे आइकॉन और macOS पर Dock आइकॉन से वापस
 लाएँ।
 
-**macOS कहता है कि ऐप “open नहीं किया जा सकता”** — ऊपर macOS वाले हिस्से में दी गई क्वारंटीन कमांड चलाएँ।
+**macOS कहता है कि ऐप “open नहीं किया जा सकता”** — ऐप पर राइट-क्लिक करके **Open** चुनें और पुष्टि करें। macOS वाले हिस्से की `xattr` कमांड वैकल्पिक तरीका है।
 
 ## खुद बिल्ड करना
 
