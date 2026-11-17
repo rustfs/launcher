@@ -970,12 +970,28 @@ pub fn App() -> impl IntoView {
 
             <div class="sidebar">
                 <div class="header hero-card">
+                    <div class="brand-lockup">
+                        <img
+                            class="wordmark"
+                            src="/public/rustfs-wordmark.svg"
+                            alt="RustFS"
+                            width="180"
+                            height="30"
+                        />
+                        <img
+                            class="stripe-signature"
+                            src="/public/rustfs-stripe.svg"
+                            alt=""
+                            width="76"
+                            height="10"
+                        />
+                    </div>
                     <span class="eyebrow">"Control Plane"</span>
                     <h1>"RustFS Launcher"</h1>
 
                     <div class="status-cluster" role="status" aria-live="polite">
                         <div class="service-indicator" class:online=move || service_status.get()>
-                            <span class="status-dot"></span>
+                            <span class="status-marker"></span>
                             <span class="status-text">
                                 {move || if service_status.get() { "Service Online" } else { "Service Offline" }}
                             </span>
