@@ -23,25 +23,57 @@ keine Konfigurationsdatei zu bearbeiten.
 ## Herunterladen
 
 Die passende Datei finden Sie auf der [Release-Seite](https://github.com/rustfs/launcher/releases).
+Release **1.0.6** ist das aktuelle neueste Release.
 
 | System | Datei |
 | --- | --- |
-| Windows 10 / 11, 64 Bit | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (ca. 50 MB) |
-| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS, Intel | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11, 64 Bit | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.dmg` und `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS, Intel (x86_64) | In Release 1.0.6 nicht veröffentlicht |
 
-Windows on ARM funktioniert ebenfalls – dort läuft der x86_64-Build per Emulation. Ein Linux-Paket gibt es noch
-nicht; unter Linux starten Sie die [RustFS-Binärdatei](https://github.com/rustfs/rustfs/releases) direkt.
+In 1.0.6 heißen die Dateien `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg` und `rustfs-launcher-macos-aarch64-1.0.6.app.zip`. Ein Paket
+`rustfs-launcher-macos-x86_64-*` gibt es nicht; ein Intel-Mac kann dieses Release nicht installieren.
+
+Windows on ARM funktioniert ebenfalls – dort läuft der x86_64-Build per Emulation. Ein Linux-Paket des Launchers
+gibt es nicht; unter Linux starten Sie die [RustFS-Binärdatei](https://github.com/rustfs/rustfs/releases) direkt.
 
 Die Downloads sind groß, weil ein vollständiger RustFS-Server mit im Installationsprogramm steckt.
+
+Dateien mit `-latest` im Namen auf demselben Release sind bytegleiche Kopien der versionierten Installer.
+`rustfs-launcher-windows-x86_64-latest-setup.exe` und `rustfs-launcher-windows-x86_64-latest.exe` sind dieser
+Windows-Installer unter festen Namen. `-latest.dmg` und `-latest.app.zip` für macOS sind dieselbe Art Kopie.
+Nehmen Sie bevorzugt die versionierte `-setup.exe` oder die `.dmg`.
+
+### Download prüfen
+
+Laden Sie auf derselben Release-Seite unter **Assets** die Datei `SHA256SUMS` herunter. Jede Zeile enthält einen
+SHA-256-Hash und den Dateinamen.
+
+Unter Windows, in PowerShell, im Ordner des Installers:
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+Unter macOS, im Terminal:
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+Der Hash muss zur Zeile mit genau diesem Dateinamen in `SHA256SUMS` passen. Groß- und Kleinschreibung spielen
+keine Rolle. Haben Sie die `.app.zip` geladen, prüfen Sie diesen Dateinamen auf dieselbe Weise. Bei einem
+späteren Release verwenden Sie die Dateinamen und die `SHA256SUMS` von dort.
 
 ## Windows, Schritt für Schritt
 
 ### 1. Installationsprogramm herunterladen
 
 Öffnen Sie die [Release-Seite](https://github.com/rustfs/launcher/releases), klappen Sie beim neuesten Release
-**Assets** auf und laden Sie die Datei herunter, die auf `-setup.exe` endet. Edge und Chrome warnen manchmal bei
-selten heruntergeladenen Installationsprogrammen; wählen Sie dann **Beibehalten**.
+**Assets** auf und laden Sie `rustfs-launcher-windows-x86_64-<version>-setup.exe` herunter (bei 1.0.6
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`). Vergleichen Sie die Datei wie oben mit `SHA256SUMS`. Edge und
+Chrome warnen manchmal bei selten heruntergeladenen Installationsprogrammen; wählen Sie dann **Beibehalten**.
 
 ### 2. An SmartScreen vorbei
 
@@ -131,10 +163,11 @@ mehr brauchen.
 
 ## macOS
 
-1. Entpacken Sie die `.app.zip` und ziehen Sie **RustFS Launcher** nach **Programme**.
-2. Der erste Start wird blockiert, weil die Release-Builds nicht von Apple notarisiert sind. Klicken Sie die App
-   mit der rechten Maustaste an und wählen Sie **Öffnen**, oder entfernen Sie das Quarantäne-Attribut im
-   Terminal:
+1. Öffnen Sie die `.dmg` und ziehen Sie **RustFS Launcher** nach **Programme**. Haben Sie stattdessen die
+   `.app.zip` geladen, entpacken Sie sie und ziehen Sie die App auf dieselbe Weise.
+2. Der erste Start wird blockiert, weil diese Builds nicht notarisiert sind. Klicken Sie die App mit der rechten
+   Maustaste an, wählen Sie **Öffnen** und bestätigen Sie. Das Entfernen des Quarantäne-Attributs im Terminal ist
+   optional:
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -147,6 +180,27 @@ mehr brauchen.
 ## Ein Rundgang durch das Fenster
 
 ![Der Launcher vor dem ersten Start](docs/images/launcher-ready.png)
+
+### Sprache
+
+Die Sprachschaltfläche (Globe-Symbol) sitzt oben rechts in der Kopfleiste. Ist die Oberfläche Arabisch, wird die
+ganze Seite gespiegelt und die Schaltfläche erscheint links.
+
+Beim ersten Start, bevor Sie eine Sprache gewählt haben, folgt die App der Sprache des Betriebssystems. Passt
+sie zu einer der 15 eingebauten Sprachen, wird diese verwendet, sonst Englisch.
+
+Diese 15 Sprachen stehen unter ihren eigenen Namen: English, العربية, 簡體中文, 繁體中文, 日本語, 한국어,
+Deutsch, Français, Español, Português, Italiano, Русский, Türkçe, Bahasa Indonesia und Tiếng Việt. Die Kürzel
+sind `en`, `ar`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt`, `it`, `ru`, `tr`, `id` und `vi`.
+Vereinfachtes Chinesisch gilt für `zh-Hans` und `zh-CN`. Traditionelles Chinesisch gilt für `zh-Hant`, `zh-TW`,
+`zh-HK` und `zh-MO`.
+
+Nach der Auswahl gilt die Sprache sofort und wird gespeichert. Die Sprache des Betriebssystems ersetzt sie
+danach nicht mehr.
+
+Das Menü im Infobereich (**Show** und **Quit**) und der Windows-Installationsassistent bleiben Englisch. Das
+macOS-Paket ist ein Disk-Image zum Ziehen nach Programme, kein übersetzter Assistent. Die Sprachschaltfläche
+ändert das Launcher-Fenster.
 
 **Statusanzeigen.** Die erste betrifft den Server: *Service Online* heißt, dass auf dem eingestellten Host und
 Port etwas antwortet. Die zweite sagt, wem dieser Prozess gehört:
@@ -206,7 +260,8 @@ kaputt. Für eine Weboberfläche nehmen Sie die Karte **Console**, die API-Adres
 **Das Fenster ist verschwunden** – Schließen versteckt es nur. Benutzen Sie das Symbol im Infobereich unter
 Windows oder das Dock-Symbol unter macOS.
 
-**macOS meldet, die App „kann nicht geöffnet werden“** – siehe den Quarantäne-Befehl im macOS-Abschnitt.
+**macOS meldet, die App „kann nicht geöffnet werden“** – klicken Sie die App mit der rechten Maustaste an, wählen
+Sie **Öffnen** und bestätigen Sie. Der `xattr`-Befehl im macOS-Abschnitt ist eine optionale Alternative.
 
 ## Selbst bauen
 
