@@ -333,10 +333,16 @@ fn match_known_failure(kind: OperationKind, message: &str) -> Option<OperationFa
         ));
     }
     if lower.contains("exit code") || lower.contains("exited with code") {
-        return Some(failure(
-            ensure_sentence(message),
-            "Confirm the data folder exists and the port is free, then launch again. RustFS writes more detail in the logs folder next to the data directory.",
-        ));
+        // A RustFS update smoke-test (`--version`) can also exit non-zero. That
+        // check does not use the data folder or the service port.
+        let fix = match kind {
+            OperationKind::Launch => "Confirm the data folder exists and the port is free, then launch again. RustFS writes more detail in the logs folder next to the data directory.",
+            OperationKind::Upgrade | OperationKind::Check => "Try the update again. A failed update leaves the installed build unchanged.",
+            OperationKind::Stop => {
+                return Some(failure(ensure_sentence(message), &default_fix(kind)))
+            }
+        };
+        return Some(failure(ensure_sentence(message), fix));
     }
     if lower.contains("checksum mismatch") {
         return Some(failure(
@@ -626,5 +632,14 @@ mod tests {
         assert!(exit.reason.contains("1"));
         assert!(exit.fix.to_lowercase().contains("logs folder"));
         rejects_logs_only_copy(OperationKind::Launch, "RustFS exited with code: 1");
+
+        let smoke = operation_failure(
+            OperationKind::Upgrade,
+            "RustFS update failed: Downloaded RustFS binary exited with exit code: 1 when asked for its version",
+        );
+        assert!(smoke.reason.to_lowercase().contains("exit code"));
+        assert!(smoke.fix.to_lowercase().contains("unchanged"));
+        assert!(!smoke.fix.to_lowercase().contains("data folder"));
+        assert!(!smoke.fix.to_lowercase().contains("port is free"));
     }
 }

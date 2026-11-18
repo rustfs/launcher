@@ -288,6 +288,7 @@ pub fn App() -> impl IntoView {
     let (action_failure, set_action_failure) = signal(None::<OperationFailure>);
     let logs_toggle_ref = NodeRef::<leptos::html::Button>::new();
     let logs_panel_ref = NodeRef::<leptos::html::Div>::new();
+    let workspace_scroll_ref = NodeRef::<leptos::html::Div>::new();
 
     let remove_toast = Callback::new(move |id: u64| {
         set_toasts.update(|current| {
@@ -320,7 +321,20 @@ pub fn App() -> impl IntoView {
     let report_failure = move |kind: OperationKind, raw: String| {
         let failure = operation_failure(kind, &raw);
         set_action_failure.set(Some(failure.clone()));
-        show_toast(failure.reason, ToastType::Error);
+        show_toast(
+            format!("{} {}", failure.reason, failure.fix),
+            ToastType::Error,
+        );
+        // The alert lives with Data Path and Launch. An upgrade started from
+        // the card further down the page would otherwise leave that alert
+        // above the current scroll position.
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if let Some(scroller) = workspace_scroll_ref.get_untracked() {
+                    scroller.set_scroll_top(0);
+                }
+            });
+        });
     };
 
     let return_focus_to_logs_toggle = move || {
@@ -1028,7 +1042,11 @@ pub fn App() -> impl IntoView {
 
     view! {
         <style>{LOGS_CSS}</style>
-        <main class="container" class:logs-open=move || logs_open.get()>
+        <main
+            class="container"
+            class:logs-open=move || logs_open.get()
+            on:keydown=close_logs
+        >
             <Toast toasts=toasts remove_toast=remove_toast />
 
             <header class="topbar">
@@ -1065,7 +1083,7 @@ pub fn App() -> impl IntoView {
             </header>
 
             <div class="workspace">
-                <div class="workspace-scroll">
+                <div class="workspace-scroll" node_ref=workspace_scroll_ref>
                 <ConfigForm
                     config=config
                     set_config=set_config
@@ -1240,7 +1258,6 @@ pub fn App() -> impl IntoView {
                     role="region"
                     aria-label="Logs"
                     node_ref=logs_panel_ref
-                    on:keydown=close_logs
                 >
                     <LogViewer
                         app_logs=app_logs
