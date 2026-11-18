@@ -2,8 +2,8 @@ use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
 use crate::helpers::{
-    display_host, primary_action, progress_percent, rustfs_idle_message, rustfs_source_label,
-    status_poll_is_current,
+    display_host, operation_failure, primary_action, progress_percent, rustfs_idle_message,
+    rustfs_source_label, status_poll_is_current, OperationFailure, OperationKind,
 };
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
@@ -282,6 +282,12 @@ pub fn App() -> impl IntoView {
     let (is_installing_rustfs, set_is_installing_rustfs) = signal(false);
     let (update_progress, set_update_progress) = signal(None::<u32>);
     let (rustfs_update_progress, set_rustfs_update_progress) = signal(None::<u32>);
+    // Logs stay closed until the user opens them. Startup, update checks, and
+    // failures must not set this.
+    let (logs_open, set_logs_open) = signal(false);
+    let (action_failure, set_action_failure) = signal(None::<OperationFailure>);
+    let logs_toggle_ref = NodeRef::<leptos::html::Button>::new();
+    let logs_panel_ref = NodeRef::<leptos::html::Div>::new();
 
     let remove_toast = Callback::new(move |id: u64| {
         set_toasts.update(|current| {
@@ -309,6 +315,47 @@ pub fn App() -> impl IntoView {
             .unchecked_ref(),
             3000,
         );
+    };
+
+    let report_failure = move |kind: OperationKind, raw: String| {
+        let failure = operation_failure(kind, &raw);
+        set_action_failure.set(Some(failure.clone()));
+        show_toast(failure.reason, ToastType::Error);
+    };
+
+    let return_focus_to_logs_toggle = move || {
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if let Some(button) = logs_toggle_ref.get_untracked() {
+                    let _ = button.focus();
+                }
+            });
+        });
+    };
+
+    let toggle_logs = move |_| {
+        let next = !logs_open.get_untracked();
+        set_logs_open.set(next);
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if next {
+                    if let Some(panel) = logs_panel_ref.get_untracked() {
+                        let _ = panel.focus();
+                    }
+                } else if let Some(button) = logs_toggle_ref.get_untracked() {
+                    let _ = button.focus();
+                }
+            });
+        });
+    };
+
+    let close_logs = move |ev: web_sys::KeyboardEvent| {
+        if ev.key() != "Escape" || !logs_open.get_untracked() {
+            return;
+        }
+        ev.prevent_default();
+        set_logs_open.set(false);
+        return_focus_to_logs_toggle();
     };
 
     Effect::new(move |_| {
@@ -385,9 +432,9 @@ pub fn App() -> impl IntoView {
                     set_service_status.set(false);
                     invalidate_status_polls();
                     sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
-                    show_toast(
-                        format!("RustFS exited with code: {}", exit_code),
-                        ToastType::Error,
+                    report_failure(
+                        OperationKind::Launch,
+                        format!("RustFS exited with code: {exit_code}"),
                     );
 
                     // Log it
@@ -486,6 +533,7 @@ pub fn App() -> impl IntoView {
         if action_busy.get_untracked() {
             return;
         }
+        set_action_failure.set(None);
         invalidate_status_polls();
         set_action_busy.set(true);
         show_toast("Launching RustFS...".to_string(), ToastType::Info);
@@ -509,9 +557,9 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             // Check if we're in Tauri environment
             if !is_tauri() {
-                show_toast(
-                    "Error: Not running in Tauri environment".to_string(),
-                    ToastType::Error,
+                report_failure(
+                    OperationKind::Launch,
+                    "Not running in Tauri environment".to_string(),
                 );
                 push_log(
                     set_app_logs,
@@ -549,7 +597,7 @@ pub fn App() -> impl IntoView {
             set_js_field(&validate_args, "config", config_js);
             if let Err(err) = tauri_invoke("validate_config", validate_args.into()).await {
                 let message = js_error_message(err);
-                show_toast(message.clone(), ToastType::Error);
+                report_failure(OperationKind::Launch, message.clone());
                 push_log(
                     set_app_logs,
                     format!("[ERROR] Config validation failed: {message}"),
@@ -584,6 +632,7 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(true);
                                 set_can_stop.set(true);
                                 set_action_busy.set(false);
+                                set_action_failure.set(None);
                                 show_toast(
                                     "RustFS launched successfully!".to_string(),
                                     ToastType::Success,
@@ -595,7 +644,10 @@ pub fn App() -> impl IntoView {
                                     APP_LOG_CAPACITY,
                                 );
                             } else {
-                                show_toast(format!("Launch failed: {}", message), ToastType::Error);
+                                report_failure(
+                                    OperationKind::Launch,
+                                    format!("Launch failed: {message}"),
+                                );
                                 let now = js_sys::Date::new_0().to_locale_time_string("en-US");
                                 push_log(
                                     set_app_logs,
@@ -609,9 +661,9 @@ pub fn App() -> impl IntoView {
                             settle_runtime();
                         }
                         Err(_) => {
-                            show_toast(
+                            report_failure(
+                                OperationKind::Launch,
                                 "RustFS launch command failed".to_string(),
-                                ToastType::Error,
                             );
                             let now = js_sys::Date::new_0().to_locale_time_string("en-US");
                             push_log(
@@ -628,7 +680,7 @@ pub fn App() -> impl IntoView {
                 }
                 Err(err) => {
                     let message = js_error_message(err);
-                    show_toast(format!("Launch failed: {message}"), ToastType::Error);
+                    report_failure(OperationKind::Launch, format!("Launch failed: {message}"));
                     push_log(
                         set_app_logs,
                         format!("[ERROR] Launch failed: {message}"),
@@ -647,6 +699,7 @@ pub fn App() -> impl IntoView {
         if action_busy.get_untracked() {
             return;
         }
+        set_action_failure.set(None);
         invalidate_status_polls();
         set_action_busy.set(true);
         show_toast("Stopping RustFS...".to_string(), ToastType::Info);
@@ -666,6 +719,7 @@ pub fn App() -> impl IntoView {
                                 set_can_stop.set(false);
                                 set_service_status.set(false);
                                 set_action_busy.set(false);
+                                set_action_failure.set(None);
                                 settle_runtime();
                                 show_toast("RustFS stopped".to_string(), ToastType::Success);
                                 push_log(
@@ -676,9 +730,9 @@ pub fn App() -> impl IntoView {
                             } else {
                                 set_action_busy.set(false);
                                 settle_runtime();
-                                show_toast(
+                                report_failure(
+                                    OperationKind::Stop,
                                     format!("Failed to stop: {}", res.message),
-                                    ToastType::Error,
                                 );
                                 push_log(
                                     set_app_logs,
@@ -690,9 +744,9 @@ pub fn App() -> impl IntoView {
                         Err(_) => {
                             set_action_busy.set(false);
                             settle_runtime();
-                            show_toast(
+                            report_failure(
+                                OperationKind::Stop,
                                 "Failed to parse stop response".to_string(),
-                                ToastType::Error,
                             );
                         }
                     }
@@ -700,7 +754,7 @@ pub fn App() -> impl IntoView {
                 Err(err) => {
                     set_action_busy.set(false);
                     settle_runtime();
-                    show_toast(js_error_message(err), ToastType::Error);
+                    report_failure(OperationKind::Stop, js_error_message(err));
                 }
             }
         });
@@ -722,6 +776,7 @@ pub fn App() -> impl IntoView {
         set_is_checking_update.set(true);
         spawn_local(async move {
             let mut found = Vec::<String>::new();
+            let mut failures = Vec::<String>::new();
 
             match tauri_invoke("check_for_update", empty_args()).await {
                 Ok(result) => match serde_wasm_bindgen::from_value::<UpdateInfo>(result) {
@@ -738,7 +793,7 @@ pub fn App() -> impl IntoView {
                         let message = "Launcher update check failed. See App Logs for details.";
                         push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                         if notify {
-                            show_toast(message.to_string(), ToastType::Error);
+                            failures.push(message.to_string());
                         }
                     }
                 },
@@ -747,7 +802,7 @@ pub fn App() -> impl IntoView {
                         format!("Launcher update check failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                     if notify {
-                        show_toast(message, ToastType::Error);
+                        failures.push(message);
                     }
                 }
             }
@@ -767,7 +822,7 @@ pub fn App() -> impl IntoView {
                         let message = "RustFS update check failed. See App Logs for details.";
                         push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                         if notify {
-                            show_toast(message.to_string(), ToastType::Error);
+                            failures.push(message.to_string());
                         }
                     }
                 },
@@ -775,20 +830,24 @@ pub fn App() -> impl IntoView {
                     let message = format!("RustFS update check failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                     if notify {
-                        show_toast(message, ToastType::Error);
+                        failures.push(message);
                     }
                 }
             }
 
+            if notify && !failures.is_empty() {
+                report_failure(OperationKind::Check, failures.join(" "));
+            }
+
             if notify {
-                if found.is_empty() {
-                    show_toast(
-                        "You are running the latest versions".to_string(),
-                        ToastType::Success,
-                    );
-                } else {
+                if !found.is_empty() {
                     show_toast(
                         format!("Update available: {}", found.join(" · ")),
+                        ToastType::Success,
+                    );
+                } else if failures.is_empty() {
+                    show_toast(
+                        "You are running the latest versions".to_string(),
                         ToastType::Success,
                     );
                 }
@@ -811,6 +870,7 @@ pub fn App() -> impl IntoView {
     });
 
     let check_update = move |_| {
+        set_action_failure.set(None);
         run_update_checks(true);
     };
 
@@ -827,6 +887,7 @@ pub fn App() -> impl IntoView {
             return;
         }
 
+        set_action_failure.set(None);
         set_is_installing_update.set(true);
         set_update_progress.set(Some(0));
         show_toast(
@@ -839,9 +900,9 @@ pub fn App() -> impl IntoView {
                     if serde_wasm_bindgen::from_value::<CommandResponse>(result).is_err() {
                         set_is_installing_update.set(false);
                         set_update_progress.set(None);
-                        show_toast(
+                        report_failure(
+                            OperationKind::Upgrade,
                             "Launcher update failed. See App Logs for details.".to_string(),
-                            ToastType::Error,
                         );
                     }
                 }
@@ -850,7 +911,7 @@ pub fn App() -> impl IntoView {
                     set_update_progress.set(None);
                     let message = format!("Launcher update failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
-                    show_toast(message, ToastType::Error);
+                    report_failure(OperationKind::Upgrade, message);
                 }
             }
         });
@@ -869,6 +930,7 @@ pub fn App() -> impl IntoView {
             return;
         }
 
+        set_action_failure.set(None);
         set_is_installing_rustfs.set(true);
         set_rustfs_update_progress.set(Some(0));
         show_toast(
@@ -879,6 +941,7 @@ pub fn App() -> impl IntoView {
             match tauri_invoke("install_rustfs_update", empty_args()).await {
                 Ok(result) => match serde_wasm_bindgen::from_value::<CommandResponse>(result) {
                     Ok(response) => {
+                        set_action_failure.set(None);
                         show_toast(response.message.clone(), ToastType::Success);
                         push_log(set_app_logs, response.message, APP_LOG_CAPACITY);
                         if let Ok(version_value) =
@@ -907,16 +970,16 @@ pub fn App() -> impl IntoView {
                         );
                     }
                     Err(_) => {
-                        show_toast(
+                        report_failure(
+                            OperationKind::Upgrade,
                             "RustFS update failed. See App Logs for details.".to_string(),
-                            ToastType::Error,
                         );
                     }
                 },
                 Err(err) => {
                     let message = format!("RustFS update failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
-                    show_toast(message, ToastType::Error);
+                    report_failure(OperationKind::Upgrade, message);
                 }
             }
             set_is_installing_rustfs.set(false);
@@ -965,14 +1028,12 @@ pub fn App() -> impl IntoView {
 
     view! {
         <style>{LOGS_CSS}</style>
-        <main class="container">
+        <main class="container" class:logs-open=move || logs_open.get()>
             <Toast toasts=toasts remove_toast=remove_toast />
 
-            <div class="sidebar">
-                <div class="header hero-card">
-                    <span class="eyebrow">"Control Plane"</span>
+            <header class="topbar">
+                <div class="topbar-title">
                     <h1>"RustFS Launcher"</h1>
-
                     <div class="status-cluster" role="status" aria-live="polite">
                         <div class="service-indicator" class:online=move || service_status.get()>
                             <span class="status-dot"></span>
@@ -991,6 +1052,31 @@ pub fn App() -> impl IntoView {
                         </div>
                     </div>
                 </div>
+                <button
+                    type="button"
+                    class="logs-toggle"
+                    node_ref=logs_toggle_ref
+                    aria-expanded=move || if logs_open.get() { "true" } else { "false" }
+                    aria-controls="logs-panel"
+                    on:click=toggle_logs
+                >
+                    {move || if logs_open.get() { "Hide logs" } else { "Show logs" }}
+                </button>
+            </header>
+
+            <div class="workspace">
+                <div class="workspace-scroll">
+                <ConfigForm
+                    config=config
+                    set_config=set_config
+                    is_running=is_running
+                    can_stop=can_stop
+                    action_busy=action_busy
+                    on_launch=Callback::new(launch_rustfs)
+                    on_stop=Callback::new(stop_rustfs)
+                    action_failure=action_failure
+                    clear_action_failure=Callback::new(move |_| set_action_failure.set(None))
+                />
 
                 <div class="summary-grid">
                     <button
@@ -1143,28 +1229,29 @@ pub fn App() -> impl IntoView {
                         </div>
                     })}
                 </section>
-
-                <ConfigForm
-                    config=config
-                    set_config=set_config
-                    is_running=is_running
-                    can_stop=can_stop
-                    action_busy=action_busy
-                    on_launch=Callback::new(launch_rustfs)
-                    on_stop=Callback::new(stop_rustfs)
-                />
+                </div>
             </div>
 
-            <div class="logs-section">
-                <LogViewer
-                    app_logs=app_logs
-                    set_app_logs=set_app_logs
-                    rustfs_logs=rustfs_logs
-                    set_rustfs_logs=set_rustfs_logs
-                    current_log_type=current_log_type
-                    set_current_log_type=set_current_log_type
-                />
-            </div>
+            <Show when=move || logs_open.get()>
+                <div
+                    id="logs-panel"
+                    class="logs-section"
+                    tabindex="-1"
+                    role="region"
+                    aria-label="Logs"
+                    node_ref=logs_panel_ref
+                    on:keydown=close_logs
+                >
+                    <LogViewer
+                        app_logs=app_logs
+                        set_app_logs=set_app_logs
+                        rustfs_logs=rustfs_logs
+                        set_rustfs_logs=set_rustfs_logs
+                        current_log_type=current_log_type
+                        set_current_log_type=set_current_log_type
+                    />
+                </div>
+            </Show>
         </main>
     }
 }

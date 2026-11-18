@@ -1,4 +1,4 @@
-use crate::helpers::primary_action;
+use crate::helpers::{operation_failure, primary_action, OperationFailure, OperationKind};
 use crate::types::{RustFsConfig, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
@@ -74,6 +74,8 @@ pub fn ConfigForm(
     #[prop(into)] action_busy: Signal<bool>,
     #[prop(into)] on_launch: Callback<SubmitEvent>,
     #[prop(into)] on_stop: Callback<()>,
+    #[prop(into)] action_failure: Signal<Option<OperationFailure>>,
+    #[prop(into)] clear_action_failure: Callback<()>,
 ) -> impl IntoView {
     let (show_secret, set_show_secret) = signal(false);
     let (is_drag_over, set_is_drag_over) = signal(false);
@@ -263,6 +265,7 @@ pub fn ConfigForm(
 
     let handle_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
+        clear_action_failure.run(());
 
         let current_config = config.get();
         let path_empty = current_config.data_path.trim().is_empty();
@@ -334,51 +337,110 @@ pub fn ConfigForm(
 
     view! {
         <form class="config-form" class:locked=move || can_stop.get() || action_busy.get() on:submit=handle_submit>
-            <Show when=move || can_stop.get() || action_busy.get()>
-                <div class="lock-banner">
-                    <span class="lock-banner-label">"Configuration Locked"</span>
+            <div class="primary-task">
+                <Show when=move || can_stop.get() || action_busy.get()>
+                    <div class="lock-banner">
+                        <span class="lock-banner-label">"Configuration Locked"</span>
+                    </div>
+                </Show>
+
+                <div class="form-group">
+                    <label for="data-path">"Data Path" <span class="required">"*"</span></label>
+                    <div
+                        class="path-input-group"
+                        class:drag-over=move || is_drag_over.get() && !can_stop.get() && !action_busy.get()
+                    >
+                        <input
+                            id="data-path"
+                            type="text"
+                            dir="ltr"
+                            spellcheck="false"
+                            autocomplete="off"
+                            placeholder="Select or drop data directory..."
+                            prop:value=move || config.get().data_path
+                            disabled=move || can_stop.get() || action_busy.get()
+                            on:input=move |ev| {
+                                let value = event_target_value(&ev);
+                                set_config.update(|c| c.data_path = value.clone());
+                                if !value.is_empty() {
+                                    set_error_message.set(None);
+                                }
+                            }
+                        />
+                        <button
+                            type="button"
+                            class="browse-btn"
+                            disabled=move || can_stop.get() || action_busy.get()
+                            on:click=select_folder
+                        >
+                            "Browse"
+                        </button>
+                    </div>
                 </div>
-            </Show>
+
+                <div class="form-actions">
+                    <button
+                        type="submit"
+                        class="launch-btn"
+                        class:stop-btn=move || {
+                            primary_action(
+                                can_stop.get(),
+                                action_busy.get(),
+                                config.get().data_path.trim().is_empty(),
+                            )
+                            .stops_service
+                        }
+                        disabled=move || {
+                            primary_action(
+                                can_stop.get(),
+                                action_busy.get(),
+                                config.get().data_path.trim().is_empty(),
+                            )
+                            .disabled
+                        }
+                    >
+                        {move || {
+                            primary_action(
+                                can_stop.get(),
+                                action_busy.get(),
+                                config.get().data_path.trim().is_empty(),
+                            )
+                            .label
+                        }}
+                    </button>
+                </div>
+
+                <Show when=move || is_running.get() && !can_stop.get()>
+                    <div class="field-hint">
+                        "Something is already listening on this host and port, but this launcher did not start it. Change the port, or stop that program, then launch."
+                    </div>
+                </Show>
+
+                {move || {
+                    error_message.get().map(|raw| {
+                        let failure = operation_failure(OperationKind::Launch, &raw);
+                        view! {
+                            <div class="alert-error" role="alert">
+                                <p>{failure.reason}</p>
+                                <p>{failure.fix}</p>
+                            </div>
+                        }
+                    })
+                }}
+
+                {move || {
+                    action_failure.get().map(|failure| {
+                        view! {
+                            <div class="alert-error" role="alert">
+                                <p>{failure.reason}</p>
+                                <p>{failure.fix}</p>
+                            </div>
+                        }
+                    })
+                }}
+            </div>
 
             <div class="control-surface">
-                <section class="form-section">
-                    <div class="section-header">
-                        <span class="section-tag">"Storage"</span>
-                        <h2>"Dataset Mount"</h2>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="data-path">"Data Path" <span class="required">"*"</span></label>
-                        <div
-                            class="path-input-group"
-                            class:drag-over=move || is_drag_over.get() && !can_stop.get() && !action_busy.get()
-                        >
-                            <input
-                                id="data-path"
-                                type="text"
-                                placeholder="Select or drop data directory..."
-                                prop:value=move || config.get().data_path
-                                disabled=move || can_stop.get() || action_busy.get()
-                                on:input=move |ev| {
-                                    let value = event_target_value(&ev);
-                                    set_config.update(|c| c.data_path = value.clone());
-                                    if !value.is_empty() {
-                                        set_error_message.set(None);
-                                    }
-                                }
-                            />
-                            <button
-                                type="button"
-                                class="browse-btn"
-                                disabled=move || can_stop.get() || action_busy.get()
-                                on:click=select_folder
-                            >
-                                "Browse"
-                            </button>
-                        </div>
-                    </div>
-                </section>
-
                 <section class="form-section">
                     <div class="section-header">
                         <span class="section-tag">"Network"</span>
@@ -577,48 +639,6 @@ pub fn ConfigForm(
                         </div>
                     </Show>
                 </section>
-            </div>
-
-            <div class="form-actions">
-                <button
-                    type="submit"
-                    class="launch-btn"
-                    class:stop-btn=move || {
-                        primary_action(
-                            can_stop.get(),
-                            action_busy.get(),
-                            config.get().data_path.trim().is_empty(),
-                        )
-                        .stops_service
-                    }
-                    disabled=move || {
-                        primary_action(
-                            can_stop.get(),
-                            action_busy.get(),
-                            config.get().data_path.trim().is_empty(),
-                        )
-                        .disabled
-                    }
-                >
-                    {move || {
-                        primary_action(
-                            can_stop.get(),
-                            action_busy.get(),
-                            config.get().data_path.trim().is_empty(),
-                        )
-                        .label
-                    }}
-                </button>
-
-                <Show when=move || is_running.get() && !can_stop.get()>
-                    <div class="field-hint">
-                        "Something is already listening on this host and port, but this launcher did not start it. Change the port, or stop that program, then launch."
-                    </div>
-                </Show>
-
-                <Show when=move || error_message.get().is_some()>
-                    <div class="error-message">{move || error_message.get()}</div>
-                </Show>
             </div>
         </form>
     }

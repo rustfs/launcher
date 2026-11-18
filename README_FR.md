@@ -9,13 +9,13 @@ sur un bouton, et vous obtenez un point de terminaison S3 à l'adresse `http://1
 Le serveur est déjà inclus dans l'application. Rien d'autre à installer, aucun terminal à ouvrir, aucun fichier
 de configuration à modifier.
 
-![Le launcher avec RustFS en cours d'exécution](docs/images/launcher-running.png)
+![RustFS est en ligne. Data Path reste au premier écran et les journaux sont cachés](docs/images/launcher-running.png)
 
 ## À quoi ça sert
 
 - Faire tourner du stockage objet sur son portable pour développer, tester ou sauvegarder, sans Docker.
 - Diriger n'importe quel client ou SDK S3 vers `127.0.0.1` et l'utiliser comme un bucket dans le cloud.
-- Garder un œil sur le serveur : état, ports utilisés et journaux en direct.
+- Garder un œil sur le serveur : état et ports utilisés. Les journaux restent cachés tant que vous ne les ouvrez pas.
 - Démarrer et arrêter RustFS quand vous le voulez. Le launcher reste dans la zone de notification pendant que le
   serveur travaille.
 - Mettre à jour le launcher — et le RustFS qu'il embarque — depuis l'application elle-même.
@@ -88,16 +88,21 @@ Vos saisies sont mémorisées : le démarrage suivant tient en un clic.
 
 ### 6. Appuyer sur Launch
 
-Cliquez sur **Launch RustFS**. En une seconde ou deux, l'en-tête passe à **Service Online / Managed by
-Launcher**, le formulaire se verrouille et **App Logs** montre ce que le launcher a fait : quel binaire il a
-choisi, avec quels arguments, et l'identifiant du processus obtenu.
+La fenêtre s'ouvre sur **Data Path** et **Launch RustFS**. Inutile de faire défiler pour les atteindre. Les
+journaux restent cachés jusqu'à **Show logs**. **Hide logs** referme le panneau. Un contrôle au démarrage ou un
+message de mise à jour ne l'ouvre pas.
 
-Si le démarrage échoue, la raison figure dans le même panneau. Les cas les plus fréquents : un dossier de
-données inexistant et un port déjà pris.
+Cliquez sur **Launch RustFS**. En une seconde ou deux, l'état passe à **Service Online / Managed by
+Launcher** et le formulaire se verrouille.
+
+Si le démarrage, l'arrêt ou une mise à jour échoue, le premier écran indique la raison et comment la corriger.
+Le panneau des journaux reste fermé. Les échecs les plus fréquents : un dossier de données inexistant et un port
+déjà pris. RustFS écrit aussi le détail dans le dossier `logs` à côté du dossier de données. **Show logs** sert
+seulement si vous voulez le détail ligne à ligne.
 
 ### 7. Utiliser le stockage
 
-Tant que le service est en ligne, les cartes **API** et **Console** en haut deviennent cliquables. **Console**
+Tant que le service est en ligne, les cartes **API** et **Console** sous le bouton de lancement deviennent cliquables. **Console**
 ouvre l'interface web ; **API** ouvre le point de terminaison S3 lui-même, dont un navigateur ne reçoit qu'une
 réponse XML — cette adresse est faite pour les clients S3.
 
@@ -147,6 +152,9 @@ vous-même si vous n'en avez plus besoin.
 
 ![Le launcher avant le premier démarrage](docs/images/launcher-ready.png)
 
+Le premier écran montre **Data Path**, **Browse** et **Launch RustFS**, avec l'état du service à côté du titre.
+Les journaux n'apparaissent pas tant que vous ne les ouvrez pas.
+
 **Les badges d'état.** Le premier parle du serveur : *Service Online* signifie que quelque chose répond sur
 l'hôte et le port configurés. Le second dit à qui appartient ce processus :
 
@@ -162,9 +170,10 @@ service en ligne. Mode n'est *Locked* que pendant que ce launcher exécute lui-m
 **Version & Updates.** Affiche la version du launcher et celle du RustFS intégré, et cherche une version plus
 récente quand vous le demandez.
 
-**Les journaux.** *App Logs*, c'est le launcher qui parle : ce qu'il a cherché, ce qu'il a démarré, pourquoi
+**Les journaux.** Cachés au lancement. **Show logs** ouvre le panneau ; les contrôles au démarrage et les messages
+de mise à jour ne l'ouvrent pas. *App Logs*, c'est le launcher qui parle : ce qu'il a cherché, ce qu'il a démarré, pourquoi
 quelque chose a échoué. *RustFS Output* montre ce que le serveur écrit sur sa console — les versions récentes de
-RustFS écrivent leurs journaux détaillés dans des fichiers, cet onglet reste donc souvent vide. Auto-scroll suit
+RustFS écrivent leurs journaux détaillés dans des fichiers, cet onglet reste donc souvent vide une fois ouvert. Auto-scroll suit
 les nouvelles lignes, Clear vide les deux onglets.
 
 ## Où atterrissent les fichiers
@@ -196,8 +205,9 @@ autre port d'API ou arrêtez ce programme. Même chose pour le port de la consol
 **Le badge affiche Detected Externally** — un RustFS répond déjà sur cet hôte et ce port, mais ce launcher ne
 l'a pas démarré. Arrêtez ce processus là où vous l'avez lancé, ou changez de port.
 
-**RustFS Output reste vide** — c'est normal avec les versions récentes de RustFS : elles écrivent leurs journaux
-dans le dossier `logs` voisin de votre dossier de données. Pour voir ce que fait le launcher, regardez App Logs.
+**RustFS Output reste vide** — une fois les journaux ouverts, cet onglet est souvent calme. Les versions récentes
+de RustFS écrivent dans le dossier `logs` voisin de votre dossier de données. L'autre onglet, App Logs, montre ce
+que fait le launcher.
 
 **Le navigateur affiche du XML du type `AccessDenied`** — c'est l'API S3 qui répond à un navigateur, rien n'est
 cassé. Pour une interface web, passez par la carte **Console** ; l'adresse de l'API, elle, est faite pour un
