@@ -1,4 +1,4 @@
-use crate::helpers::primary_action;
+use crate::helpers::{primary_action, OperationFailure};
 use crate::i18n::{use_i18n, Strings};
 use crate::types::{RustFsConfig, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST};
 use leptos::ev::SubmitEvent;
@@ -16,7 +16,7 @@ extern "C" {
     async fn open(options: JsValue) -> JsValue;
 }
 
-/// Kept as a value rather than text so an error already on screen follows a
+/// Kept as a value rather than text so an alert already on screen follows a
 /// language switch.
 #[derive(Debug, Clone, PartialEq)]
 enum FormError {
@@ -28,13 +28,22 @@ enum FormError {
 }
 
 impl FormError {
-    fn message(&self, t: &Strings) -> String {
-        match self {
-            FormError::ApiPort => t.api_port_invalid.to_string(),
-            FormError::ConsolePort => t.console_port_invalid.to_string(),
-            FormError::PortConflict => t.port_conflict.to_string(),
-            FormError::DataPathRequired => t.data_path_required.to_string(),
-            FormError::PublicDefaultCredentials(host) => (t.public_default_credentials)(host),
+    fn failure(&self, t: &Strings) -> OperationFailure {
+        let (reason, fix) = match self {
+            FormError::ApiPort => (t.api_port_invalid.to_string(), t.fix_port_number),
+            FormError::ConsolePort => (t.console_port_invalid.to_string(), t.fix_port_number),
+            FormError::PortConflict => (t.port_conflict.to_string(), t.fix_different_ports),
+            FormError::DataPathRequired => {
+                (t.data_path_required.to_string(), t.fix_choose_data_folder)
+            }
+            FormError::PublicDefaultCredentials(host) => (
+                (t.public_credentials_reason)(host),
+                t.fix_public_credentials,
+            ),
+        };
+        OperationFailure {
+            reason,
+            fix: fix.to_string(),
         }
     }
 }
@@ -96,6 +105,8 @@ pub fn ConfigForm(
     #[prop(into)] action_busy: Signal<bool>,
     #[prop(into)] on_launch: Callback<SubmitEvent>,
     #[prop(into)] on_stop: Callback<()>,
+    #[prop(into)] action_failure: Signal<Option<OperationFailure>>,
+    #[prop(into)] clear_action_failure: Callback<()>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let (show_secret, set_show_secret) = signal(false);
@@ -283,6 +294,7 @@ pub fn ConfigForm(
 
     let handle_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
+        clear_action_failure.run(());
 
         let current_config = config.get();
         let path_empty = current_config.data_path.trim().is_empty();
@@ -352,51 +364,110 @@ pub fn ConfigForm(
 
     view! {
         <form class="config-form" class:locked=move || can_stop.get() || action_busy.get() on:submit=handle_submit>
-            <Show when=move || can_stop.get() || action_busy.get()>
-                <div class="lock-banner">
-                    <span class="lock-banner-label">{move || i18n.t().config_locked}</span>
+            <div class="primary-task">
+                <Show when=move || can_stop.get() || action_busy.get()>
+                    <div class="lock-banner">
+                        <span class="lock-banner-label">{move || i18n.t().config_locked}</span>
+                    </div>
+                </Show>
+
+                <div class="form-group">
+                    <label for="data-path">{move || i18n.t().data_path} <span class="required">"*"</span></label>
+                    <div
+                        class="path-input-group"
+                        class:drag-over=move || is_drag_over.get() && !can_stop.get() && !action_busy.get()
+                    >
+                        <input
+                            id="data-path"
+                            type="text"
+                            dir="ltr"
+                            spellcheck="false"
+                            autocomplete="off"
+                            placeholder=move || i18n.t().data_path_placeholder
+                            prop:value=move || config.get().data_path
+                            disabled=move || can_stop.get() || action_busy.get()
+                            on:input=move |ev| {
+                                let value = event_target_value(&ev);
+                                set_config.update(|c| c.data_path = value.clone());
+                                if !value.is_empty() {
+                                    set_error_message.set(None);
+                                }
+                            }
+                        />
+                        <button
+                            type="button"
+                            class="browse-btn"
+                            disabled=move || can_stop.get() || action_busy.get()
+                            on:click=select_folder
+                        >
+                            {move || i18n.t().browse}
+                        </button>
+                    </div>
                 </div>
-            </Show>
+
+                <div class="form-actions">
+                    <button
+                        type="submit"
+                        class="launch-btn"
+                        class:stop-btn=move || {
+                            primary_action(
+                                can_stop.get(),
+                                action_busy.get(),
+                                config.get().data_path.trim().is_empty(),
+                            )
+                            .stops_service
+                        }
+                        disabled=move || {
+                            primary_action(
+                                can_stop.get(),
+                                action_busy.get(),
+                                config.get().data_path.trim().is_empty(),
+                            )
+                            .disabled
+                        }
+                    >
+                        {move || {
+                            let action = primary_action(
+                                can_stop.get(),
+                                action_busy.get(),
+                                config.get().data_path.trim().is_empty(),
+                            );
+                            i18n.t().action_label(action.label)
+                        }}
+                    </button>
+                </div>
+
+                <Show when=move || is_running.get() && !can_stop.get()>
+                    <div class="field-hint">
+                        {move || i18n.t().external_listener}
+                    </div>
+                </Show>
+
+                {move || {
+                    error_message.get().map(|error| {
+                        let failure = error.failure(i18n.t());
+                        view! {
+                            <div class="alert-error" role="alert">
+                                <p>{failure.reason}</p>
+                                <p>{failure.fix}</p>
+                            </div>
+                        }
+                    })
+                }}
+
+                {move || {
+                    action_failure.get().map(|failure| {
+                        view! {
+                            <div class="alert-error" role="alert">
+                                <p>{failure.reason}</p>
+                                <p>{failure.fix}</p>
+                            </div>
+                        }
+                    })
+                }}
+            </div>
 
             <div class="control-surface">
-                <section class="form-section">
-                    <div class="section-header">
-                        <span class="section-tag">{move || i18n.t().storage}</span>
-                        <h2>{move || i18n.t().dataset_mount}</h2>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="data-path">{move || i18n.t().data_path} <span class="required">"*"</span></label>
-                        <div
-                            class="path-input-group"
-                            class:drag-over=move || is_drag_over.get() && !can_stop.get() && !action_busy.get()
-                        >
-                            <input
-                                id="data-path"
-                                type="text"
-                                placeholder=move || i18n.t().data_path_placeholder
-                                prop:value=move || config.get().data_path
-                                disabled=move || can_stop.get() || action_busy.get()
-                                on:input=move |ev| {
-                                    let value = event_target_value(&ev);
-                                    set_config.update(|c| c.data_path = value.clone());
-                                    if !value.is_empty() {
-                                        set_error_message.set(None);
-                                    }
-                                }
-                            />
-                            <button
-                                type="button"
-                                class="browse-btn"
-                                disabled=move || can_stop.get() || action_busy.get()
-                                on:click=select_folder
-                            >
-                                {move || i18n.t().browse}
-                            </button>
-                        </div>
-                    </div>
-                </section>
-
                 <section class="form-section">
                     <div class="section-header">
                         <span class="section-tag">{move || i18n.t().network}</span>
@@ -595,48 +666,6 @@ pub fn ConfigForm(
                         </div>
                     </Show>
                 </section>
-            </div>
-
-            <div class="form-actions">
-                <button
-                    type="submit"
-                    class="launch-btn"
-                    class:stop-btn=move || {
-                        primary_action(
-                            can_stop.get(),
-                            action_busy.get(),
-                            config.get().data_path.trim().is_empty(),
-                        )
-                        .stops_service
-                    }
-                    disabled=move || {
-                        primary_action(
-                            can_stop.get(),
-                            action_busy.get(),
-                            config.get().data_path.trim().is_empty(),
-                        )
-                        .disabled
-                    }
-                >
-                    {move || {
-                        let action = primary_action(
-                            can_stop.get(),
-                            action_busy.get(),
-                            config.get().data_path.trim().is_empty(),
-                        );
-                        i18n.t().action_label(action.label)
-                    }}
-                </button>
-
-                <Show when=move || is_running.get() && !can_stop.get()>
-                    <div class="field-hint">
-                        {move || i18n.t().external_listener}
-                    </div>
-                </Show>
-
-                <Show when=move || error_message.get().is_some()>
-                    <div class="error-message">{move || error_message.get().map(|error| error.message(i18n.t()))}</div>
-                </Show>
             </div>
         </form>
     }

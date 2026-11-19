@@ -3,14 +3,14 @@
 Use this guide when contributing to RustFS Launcher; it highlights the project layout, tooling, and expectations.
 
 ## Project Structure & Module Organization
-- `src/`: Leptos client entrypoint (`main.rs`), UI composition (`app.rs`), and contextual styles (`logs.css`).
-- `src-tauri/src/`: Tauri backend modules: `commands.rs` for invokable actions, `process.rs` for RustFS binary orchestration, `state.rs` for shared application state, plus error types.
+- `src/`: Leptos client entrypoint (`main.rs`), UI composition (`app.rs`), form/log/toast components (`components/`), DTOs mirrored from the backend (`types.rs`), pure UI logic (`helpers.rs`), and contextual styles (`logs.css`).
+- `src-tauri/src/`: Tauri backend modules: `commands.rs` for invokable actions, `process.rs` for RustFS binary orchestration, `state.rs` for shared application state, `rustfs_update.rs` and `binaries.rs` for the in-app RustFS update and installed-binary bookkeeping, `platform.rs`/`version.rs`/`network.rs`/`config.rs` helpers, plus error types. Only macOS and Windows are supported targets.
 - `src-tauri/binaries/`: Platform-specific RustFS executables fetched by the build scripts; keep this directory untracked in Git.
 - `public/`: Static assets bundled by Trunk (`leptos.svg`, `tauri.svg`).
 - `Trunk.toml` and `tauri.conf.json`: runtime configuration for the web client and desktop shell.
 
 ## Build, Test, and Development Commands
-- `./build.sh` (macOS/Linux) or `build.bat` (Windows): download the matching RustFS binary into `src-tauri/binaries/`.
+- `./build.sh` (macOS) or `build.bat` (Windows): download the matching RustFS binary into `src-tauri/binaries/`.
 - `cargo tauri dev`: launch the desktop shell with hot reload across the Rust backend and Leptos UI.
 - `trunk serve --port 1421`: run the Leptos client in a browser-only workflow using the `Trunk.toml` settings.
 - `cargo tauri build`: produce distributable desktop bundles.
@@ -18,21 +18,22 @@ Use this guide when contributing to RustFS Launcher; it highlights the project l
 - `./scripts/check-upstream-version.sh`: check for new versions from upstream rustfs/rustfs repository.
 
 ## Automated Build & Release
-The repository includes automated workflows to keep in sync with upstream rustfs/rustfs releases:
+Launcher releases track upstream rustfs/rustfs: by default the launcher version is the bundled RustFS version (tag `1.0.1` ships RustFS `1.0.1`). See `docs/SELF_UPDATE.md` for signing and updater details.
 
 ### Upstream Version Sync (`.github/workflows/upstream-sync.yml`)
-- **Scheduled Check**: Runs hourly to check `https://version.rustfs.com/latest.json` for new rustfs/rustfs releases.
-- **Automatic Trigger**: When a new upstream version is detected, it automatically creates a corresponding git tag and triggers the build workflow.
-- **Manual Trigger**: Can be manually triggered via GitHub Actions with an optional `force_build` parameter.
-- **Version Tracking**: Compares upstream release tags with local repository tags to detect updates.
+- **Scheduled Check**: Runs hourly against `https://version.rustfs.com/latest.json`.
+- **Version Tracking**: Compares the upstream tag with `git describe --tags --abbrev=0`; a leading `v` is ignored on both sides.
+- **Automatic Trigger**: On a new version it pushes a tag named exactly as upstream reports it (currently without a `v`, e.g. `1.0.1`), then runs `gh workflow run build.yml --ref <tag>`. The explicit dispatch is required because tags pushed with `GITHUB_TOKEN` do not trigger other workflows.
+- **Manual Trigger**: `workflow_dispatch` with an optional `force_build` input rebuilds even when versions match.
 
 ### Build Workflow (`.github/workflows/build.yml`)
-- Triggered automatically by new tags created by the upstream sync workflow.
-- Builds platform-specific installers for Windows (macOS support can be uncommented).
-- Downloads the latest RustFS binaries from GitHub release assets resolved through `latest.json` during the build process.
-- Produces distributable packages (DMG, MSI, AppImage, etc.) as GitHub release artifacts.
+- **Triggers**: tag push matching `*.*.*`, a published GitHub Release, or `workflow_dispatch`.
+- **Publishing**: Any run on a tag ref (including the dispatch from upstream sync) publishes to GitHub Releases and Cloudflare R2. A dispatch from a branch with the `tag` input is a dry run unless `publish` is set; without `tag` it is a `dev-<sha>` build with updater artifacts disabled.
+- **Version**: The tag (minus any `v`) must be SemVer; CI writes it into `tauri.conf.json` and `src-tauri/Cargo.toml`, so the `0.1.0` in the repo is a placeholder. The bundled RustFS defaults to the latest upstream release (override with `rustfs_tag`) and is compiled in as `RUSTFS_VERSION`.
+- **Platforms**: macOS Apple Silicon, macOS Intel, and Windows x86_64. A platform is skipped when the upstream release has no asset for it (e.g. `1.0.1` has no macOS Intel build).
+- **Outputs**: macOS `.dmg`, `.app.zip`, and updater `.app.tar.gz` + `.sig`; Windows NSIS `-setup.exe` + `.sig`; plus `latest.json` (updater manifest) and `SHA256SUMS`. No MSI, AppImage, or Linux bundles are produced.
 
-This automation ensures that whenever rustfs/rustfs publishes a new version, this launcher repository will automatically build and release updated installers within 24 hours.
+A new upstream release is normally published as launcher installers within a couple of hours: up to one hour until the next check, plus roughly 40 minutes of build time.
 
 ## Coding Style & Naming Conventions
 Use idiomatic Rust formatting (4-space indentation, `snake_case` modules/functions, `PascalCase` types, `SCREAMING_SNAKE_CASE` constants) and guard changes with `cargo fmt`.

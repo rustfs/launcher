@@ -113,14 +113,14 @@ make test-ci-verbose
 #### 测试特定检查
 
 ```bash
-# 仅测试代码格式化
-make test-fmt
+# 仅检查代码格式化
+make check-fmt
 
-# 仅测试 clippy 检查
-make test-clippy
+# 仅运行 clippy 检查
+make check-clippy
 
-# 运行本地测试
-make test-local
+# 运行全部单元测试
+make check-test
 ```
 
 #### 查看工作流信息
@@ -162,8 +162,9 @@ make test-ci
 ### Build 工作流 (build.yml)
 
 触发条件:
-- 推送 tag (v*)
-- 手动触发
+- 推送匹配 `*.*.*` 的 tag（例如 `1.0.1`）
+- 发布 Release
+- 手动触发（Upstream Sync 也通过手动触发在新 tag 上启动构建）
 
 支持平台:
 - macOS (Apple Silicon)
