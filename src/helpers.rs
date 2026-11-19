@@ -1,56 +1,114 @@
-use crate::types::{DEFAULT_ACCESS_KEY, DEFAULT_HOST, DEFAULT_SECRET_KEY};
+use crate::types::{
+    DEFAULT_ACCESS_KEY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST, DEFAULT_SECRET_KEY,
+};
 use std::net::IpAddr;
 
-/// Host shown on the API/Console cards. Wildcards become a loopback address
-/// the user's browser can actually open.
+/// Loopback address a browser can open. `0.0.0.0` and `::` are bind addresses,
+/// not destinations.
+const BROWSER_LOOPBACK: &str = "127.0.0.1";
+
+/// Web console path. The console port root answers with an S3 error document.
+pub const CONSOLE_UI_PATH: &str = "/rustfs/console/";
+
+/// Host a browser can open. Wildcards become loopback; the listening address
+/// the user copies keeps the real bind (see `listening_address`).
 pub fn display_host(host: Option<&str>) -> String {
     match host.map(str::trim).filter(|value| !value.is_empty()) {
-        Some("0.0.0.0") | Some("*") | None => DEFAULT_HOST.to_string(),
+        Some("0.0.0.0") | Some("*") | None => BROWSER_LOOPBACK.to_string(),
         Some("::") | Some("[::]") => "[::1]".to_string(),
         Some(host) if host.contains(':') && !host.starts_with('[') => format!("[{host}]"),
         Some(host) => host.to_string(),
     }
 }
 
-pub fn is_loopback_bind_host(host: Option<&str>) -> bool {
+fn bind_host_label(host: Option<&str>) -> String {
     let host = host
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_HOST);
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    }
+}
+
+/// Address RustFS is bound to, including a wildcard such as `0.0.0.0`.
+pub fn listening_address(host: Option<&str>, port: u16) -> String {
+    format!("http://{}:{port}", bind_host_label(host))
+}
+
+/// Credential RustFS is actually using. Empty fields fall back to the
+/// published `rustfsadmin` pair; this launcher does not invent a unique key.
+pub fn credential_in_use(value: Option<&str>, default: &str) -> String {
+    value
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .unwrap_or(default)
+        .to_string()
+}
+
+/// True when other devices on the network can open the bind address.
+pub fn endpoint_is_on_lan(host: Option<&str>) -> bool {
     let host = host
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_HOST);
+    let bare = host
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
         .unwrap_or(host);
-    if host.eq_ignore_ascii_case("localhost") {
-        return true;
+    if bare.eq_ignore_ascii_case("localhost") {
+        return false;
     }
-    host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
-}
-
-fn credential_is_published_default(value: Option<&str>, default: &str) -> bool {
-    match value.map(str::trim).filter(|item| !item.is_empty()) {
-        None => true,
-        Some(value) => value == default,
+    match bare.parse::<IpAddr>() {
+        Ok(ip) => !ip.is_loopback(),
+        Err(_) => true,
     }
 }
 
-/// True when a non-loopback bind would start RustFS with the published
-/// `rustfsadmin` / `rustfsadmin` pair. Empty fields count: RustFS fills those
-/// in itself.
-pub fn refuses_public_default_credentials(
+pub fn reachability_note(host: Option<&str>) -> &'static str {
+    if endpoint_is_on_lan(host) {
+        "Other devices on your network can reach this endpoint. The keys below are the ones RustFS is using."
+    } else {
+        "Only this computer can reach this endpoint. The keys below are the ones RustFS is using."
+    }
+}
+
+/// What the post-start screen copies. Captured at launch so a later edit in
+/// Settings or Change administrator does not pretend the running process
+/// already switched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveEndpoint {
+    pub listening_address: String,
+    pub access_key: String,
+    pub secret_key: String,
+    pub console_enabled: bool,
+    pub api_url: String,
+    pub console_url: String,
+    pub on_lan: bool,
+}
+
+pub fn capture_endpoint(
     host: Option<&str>,
+    port: Option<u16>,
+    console_port: Option<u16>,
+    console_enable: bool,
     access_key: Option<&str>,
     secret_key: Option<&str>,
-) -> bool {
-    !is_loopback_bind_host(host)
-        && (credential_is_published_default(access_key, DEFAULT_ACCESS_KEY)
-            || credential_is_published_default(secret_key, DEFAULT_SECRET_KEY))
-}
-
-pub fn public_default_credentials_message(host: &str) -> String {
-    format!(
-        "Refusing to expose the default rustfsadmin credentials on {host}. Bind to 127.0.0.1, or set a unique access key and secret key. Empty credentials also fall back to rustfsadmin"
-    )
+) -> ActiveEndpoint {
+    let port = port.unwrap_or(DEFAULT_API_PORT);
+    let console_port = console_port.unwrap_or(DEFAULT_CONSOLE_PORT);
+    let browser_host = display_host(host);
+    ActiveEndpoint {
+        listening_address: listening_address(host, port),
+        access_key: credential_in_use(access_key, DEFAULT_ACCESS_KEY),
+        secret_key: credential_in_use(secret_key, DEFAULT_SECRET_KEY),
+        console_enabled: console_enable,
+        api_url: format!("http://{browser_host}:{port}"),
+        console_url: format!("http://{browser_host}:{console_port}{CONSOLE_UI_PATH}"),
+        on_lan: endpoint_is_on_lan(host),
+    }
 }
 
 pub fn rustfs_source_label(managed: bool) -> &'static str {
@@ -86,6 +144,98 @@ pub fn primary_action(can_stop: bool, busy: bool, data_path_empty: bool) -> Prim
         lock_form: can_stop || busy,
         stops_service: can_stop && !busy,
     }
+}
+
+/// Logs stay closed until the user presses View logs. Startup, update toasts,
+/// and failures must not pass `true`.
+pub fn logs_open_by_default() -> bool {
+    false
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreenPhase {
+    PreStart,
+    PostStart,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlWeight {
+    Primary,
+    Destructive,
+    Outline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FirstScreenState {
+    pub phase: ScreenPhase,
+    pub show_path: bool,
+    pub launch_visible: bool,
+    pub launch_disabled: bool,
+    pub launch_label: &'static str,
+    pub stop_visible: bool,
+    pub stop_disabled: bool,
+    /// Stop is the only filled action on the post-start screen.
+    pub stop_is_only_primary: bool,
+    pub show_network_on_first_screen: bool,
+    pub show_credentials_on_first_screen: bool,
+    pub show_listening_address: bool,
+    pub show_current_credentials: bool,
+    pub show_secondary_actions: bool,
+    pub settings_is_primary: bool,
+    pub settings_is_overlay: bool,
+    pub logs_visible: bool,
+}
+
+/// Two screens, one primary action each. Host, port, console, and credentials
+/// never sit on the pre-start screen. After start, the path field leaves and
+/// the listening address plus the keys in use take its place.
+pub fn first_screen_state(
+    can_stop: bool,
+    busy: bool,
+    data_path_empty: bool,
+    logs_requested: bool,
+) -> FirstScreenState {
+    let action = primary_action(can_stop, busy, data_path_empty);
+    let post_start = can_stop;
+    FirstScreenState {
+        phase: if post_start {
+            ScreenPhase::PostStart
+        } else {
+            ScreenPhase::PreStart
+        },
+        show_path: !post_start,
+        launch_visible: !post_start,
+        launch_disabled: !post_start && action.disabled,
+        launch_label: if post_start {
+            "Launch RustFS"
+        } else {
+            action.label
+        },
+        stop_visible: post_start,
+        stop_disabled: post_start && busy,
+        stop_is_only_primary: post_start,
+        show_network_on_first_screen: false,
+        show_credentials_on_first_screen: false,
+        show_listening_address: post_start,
+        show_current_credentials: post_start,
+        show_secondary_actions: post_start,
+        settings_is_primary: false,
+        settings_is_overlay: true,
+        logs_visible: logs_requested,
+    }
+}
+
+pub fn control_class(weight: ControlWeight) -> &'static str {
+    match weight {
+        ControlWeight::Primary => "button button-primary",
+        ControlWeight::Destructive => "button button-destructive",
+        ControlWeight::Outline => "button button-outline",
+    }
+}
+
+/// The header control is a 32×32 icon. It is never a second primary button.
+pub fn settings_control_class() -> &'static str {
+    "icon-button"
 }
 
 pub fn rustfs_idle_message(notes: Option<&str>) -> String {
@@ -459,10 +609,13 @@ fn ensure_sentence(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        display_host, operation_failure, primary_action, progress_percent,
-        public_default_credentials_message, refuses_public_default_credentials,
-        rustfs_idle_message, rustfs_source_label, status_poll_is_current, OperationKind,
+        capture_endpoint, control_class, credential_in_use, display_host, endpoint_is_on_lan,
+        first_screen_state, listening_address, logs_open_by_default, operation_failure,
+        primary_action, progress_percent, reachability_note, rustfs_idle_message,
+        rustfs_source_label, settings_control_class, status_poll_is_current, ControlWeight,
+        OperationKind, ScreenPhase,
     };
+    use crate::types::RustFsConfig;
 
     #[test]
     fn display_host_rewrites_wildcards_and_wraps_ipv6() {
@@ -530,35 +683,133 @@ mod tests {
     }
 
     #[test]
-    fn public_default_credentials_are_refused_off_loopback() {
-        assert!(!refuses_public_default_credentials(
-            Some("127.0.0.1"),
-            Some("rustfsadmin"),
-            Some("rustfsadmin"),
-        ));
-        assert!(!refuses_public_default_credentials(
-            Some("localhost"),
-            None,
-            None,
-        ));
-        assert!(refuses_public_default_credentials(
-            Some("0.0.0.0"),
-            Some("rustfsadmin"),
-            Some("sk-unique"),
-        ));
-        assert!(refuses_public_default_credentials(
-            Some("192.168.1.9"),
-            None,
-            Some("rustfsadmin"),
-        ));
-        assert!(!refuses_public_default_credentials(
-            Some("0.0.0.0"),
-            Some("ak-unique"),
-            Some("sk-unique"),
-        ));
-        let message = public_default_credentials_message("0.0.0.0");
-        assert!(message.contains("0.0.0.0"));
-        assert!(message.contains("unique access key"));
+    fn fresh_screen_shows_only_path_and_a_disabled_launch() {
+        let state = first_screen_state(false, false, true, logs_open_by_default());
+        assert_eq!(state.phase, ScreenPhase::PreStart);
+        assert!(state.show_path);
+        assert!(state.launch_visible);
+        assert!(state.launch_disabled);
+        assert_eq!(state.launch_label, "Launch RustFS");
+        assert!(!state.stop_visible);
+        assert!(!state.show_network_on_first_screen);
+        assert!(!state.show_credentials_on_first_screen);
+        assert!(!state.show_listening_address);
+        assert!(!state.show_current_credentials);
+        assert!(!state.show_secondary_actions);
+        assert!(!state.logs_visible);
+        assert!(!state.settings_is_primary);
+        assert!(state.settings_is_overlay);
+        assert_eq!(
+            control_class(ControlWeight::Primary),
+            "button button-primary"
+        );
+        assert!(!settings_control_class().contains("button-primary"));
+    }
+
+    #[test]
+    fn choosing_a_path_enables_launch_without_opening_logs() {
+        let state = first_screen_state(false, false, false, false);
+        assert!(state.launch_visible);
+        assert!(!state.launch_disabled);
+        assert!(!state.logs_visible);
+
+        let launching = first_screen_state(false, true, false, false);
+        assert_eq!(launching.phase, ScreenPhase::PreStart);
+        assert_eq!(launching.launch_label, "Launching…");
+        assert!(launching.launch_disabled);
+        assert!(launching.show_path);
+        assert!(!launching.logs_visible);
+    }
+
+    #[test]
+    fn post_start_replaces_launch_with_stop_and_shows_the_endpoint() {
+        let state = first_screen_state(true, false, false, false);
+        assert_eq!(state.phase, ScreenPhase::PostStart);
+        assert!(!state.show_path);
+        assert!(!state.launch_visible);
+        assert!(state.stop_visible);
+        assert!(!state.stop_disabled);
+        assert!(state.stop_is_only_primary);
+        assert!(state.show_listening_address);
+        assert!(state.show_current_credentials);
+        assert!(state.show_secondary_actions);
+        assert!(!state.show_network_on_first_screen);
+        assert!(!state.show_credentials_on_first_screen);
+        assert!(!state.logs_visible);
+        assert_eq!(
+            control_class(ControlWeight::Destructive),
+            "button button-destructive"
+        );
+        assert_eq!(
+            control_class(ControlWeight::Outline),
+            "button button-outline"
+        );
+
+        let stopping = first_screen_state(true, true, false, false);
+        assert!(stopping.stop_visible);
+        assert!(stopping.stop_disabled);
+        assert!(!stopping.launch_visible);
+    }
+
+    #[test]
+    fn view_logs_is_the_only_way_the_panel_opens() {
+        assert!(!logs_open_by_default());
+        assert!(!first_screen_state(true, false, false, false).logs_visible);
+        assert!(first_screen_state(true, false, false, true).logs_visible);
+        let failure = operation_failure(OperationKind::Launch, "See App Logs for details.");
+        assert!(!failure.reason.to_lowercase().contains("see app logs"));
+        assert!(!first_screen_state(false, false, false, false).logs_visible);
+    }
+
+    #[test]
+    fn listening_address_keeps_the_wildcard_and_published_keys() {
+        assert_eq!(
+            listening_address(Some("0.0.0.0"), 9000),
+            "http://0.0.0.0:9000"
+        );
+        assert_eq!(display_host(Some("0.0.0.0")), "127.0.0.1");
+        assert!(endpoint_is_on_lan(Some("0.0.0.0")));
+        assert!(!endpoint_is_on_lan(Some("127.0.0.1")));
+        assert!(reachability_note(Some("0.0.0.0")).contains("network"));
+
+        let defaults = RustFsConfig::default();
+        let endpoint = capture_endpoint(
+            defaults.host.as_deref(),
+            defaults.port,
+            defaults.console_port,
+            defaults.console_enable,
+            defaults.access_key.as_deref(),
+            defaults.secret_key.as_deref(),
+        );
+        assert_eq!(endpoint.listening_address, "http://0.0.0.0:9000");
+        assert_eq!(endpoint.access_key, "rustfsadmin");
+        assert_eq!(endpoint.secret_key, "rustfsadmin");
+        assert!(endpoint.console_enabled);
+        assert!(endpoint.on_lan);
+        assert_eq!(endpoint.api_url, "http://127.0.0.1:9000");
+        assert!(endpoint.console_url.contains(":9001/rustfs/console/"));
+        assert_eq!(credential_in_use(None, "rustfsadmin"), "rustfsadmin");
+        assert_eq!(
+            credential_in_use(Some("  custom  "), "rustfsadmin"),
+            "custom"
+        );
+    }
+
+    #[test]
+    fn controls_stay_square_and_a_disabled_launch_is_forty_percent() {
+        let css = include_str!("../styles.css");
+        let logs = include_str!("logs.css");
+        assert!(css.contains("opacity: 0.4"));
+        assert!(css.contains(".button-primary"));
+        assert!(css.contains(".button-destructive"));
+        assert!(css.contains(".icon-button"));
+        assert!(css.contains("inset-inline-end"));
+        assert!(
+            !css.contains("999px"),
+            "pill radii are not part of this screen"
+        );
+        assert!(!logs.contains("999px"));
+        assert!(!css.contains("linear-gradient(135deg, var(--brand-blue)"));
     }
 
     fn rejects_logs_only_copy(kind: OperationKind, raw: &str) {

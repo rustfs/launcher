@@ -116,30 +116,12 @@ pub(crate) fn unbundled_search_dirs(allow_dev_paths: bool) -> (Option<PathBuf>, 
     )
 }
 
-fn credential_is_published_default(value: Option<&str>, default: &str) -> bool {
-    match value.map(str::trim).filter(|item| !item.is_empty()) {
-        // RustFS substitutes rustfsadmin when the variable is unset.
-        None => true,
-        Some(value) => value == default,
-    }
-}
-
-pub(crate) fn falls_back_to_published_credentials(config: &RustFsConfig) -> bool {
-    credential_is_published_default(
-        config.access_key.as_deref(),
-        crate::config::DEFAULT_ACCESS_KEY,
-    ) || credential_is_published_default(
-        config.secret_key.as_deref(),
-        crate::config::DEFAULT_SECRET_KEY,
-    )
-}
-
 pub(crate) fn validate_config_for_launch(config: &RustFsConfig) -> Result<()> {
-    let host =
-        crate::network::validate_bind_host(config.bind_host()).map_err(Error::InvalidHost)?;
-    if !crate::network::is_loopback_host(host) && falls_back_to_published_credentials(config) {
-        return Err(Error::InsecureBind(host.to_string()));
-    }
+    // The published rustfsadmin pair is allowed on 0.0.0.0. That bind is the
+    // default, and refusing it would stop Launch before the server can start.
+    // The first screen tells the user the endpoint is on the LAN and how to
+    // change the keys.
+    crate::network::validate_bind_host(config.bind_host()).map_err(Error::InvalidHost)?;
     resolve_data_path(&config.data_path)?;
     if config.console_enable && config.api_port() == config.console_port() {
         return Err(Error::PortConflict);
@@ -703,42 +685,28 @@ mod tests {
     }
 
     #[test]
-    fn launch_rejects_public_binds_that_would_use_published_credentials() {
+    fn launch_accepts_published_credentials_on_every_interface() {
         let dir = tempfile::tempdir().unwrap();
         let defaults = RustFsConfig {
             data_path: dir.path().to_string_lossy().into_owned(),
             host: Some("0.0.0.0".into()),
+            access_key: Some("rustfsadmin".into()),
+            secret_key: Some("rustfsadmin".into()),
             ..RustFsConfig::default()
         };
-        let error = validate_config_for_launch(&defaults).unwrap_err();
-        assert!(matches!(error, Error::InsecureBind(_)));
-        assert!(error.to_string().contains("0.0.0.0"));
-        assert!(error.to_string().contains("unique access key"));
+        assert!(validate_config_for_launch(&defaults).is_ok());
+        assert!(defaults.console_enable);
 
         let cleared = RustFsConfig {
             access_key: None,
             secret_key: None,
-            ..defaults
+            ..defaults.clone()
         };
-        assert!(matches!(
-            validate_config_for_launch(&cleared),
-            Err(Error::InsecureBind(_))
-        ));
-
-        let unique = RustFsConfig {
-            data_path: dir.path().to_string_lossy().into_owned(),
-            host: Some("0.0.0.0".into()),
-            access_key: Some("ak-unique".into()),
-            secret_key: Some("sk-unique-value".into()),
-            console_enable: false,
-            ..RustFsConfig::default()
-        };
-        assert!(validate_config_for_launch(&unique).is_ok());
+        assert!(validate_config_for_launch(&cleared).is_ok());
 
         let loopback = RustFsConfig {
-            data_path: dir.path().to_string_lossy().into_owned(),
             host: Some("localhost".into()),
-            ..RustFsConfig::default()
+            ..defaults
         };
         assert!(validate_config_for_launch(&loopback).is_ok());
     }

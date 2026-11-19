@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_API_PORT: u16 = 9000;
 pub const DEFAULT_CONSOLE_PORT: u16 = 9001;
-pub const DEFAULT_HOST: &str = "127.0.0.1";
+/// Bind every interface. A browser on this computer opens the loopback address.
+pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_ACCESS_KEY: &str = "rustfsadmin";
 pub const DEFAULT_SECRET_KEY: &str = "rustfsadmin";
 
@@ -34,7 +35,7 @@ impl Default for RustFsConfig {
             host: Some(DEFAULT_HOST.to_string()),
             access_key: Some(DEFAULT_ACCESS_KEY.to_string()),
             secret_key: Some(DEFAULT_SECRET_KEY.to_string()),
-            console_enable: false,
+            console_enable: true,
         }
     }
 }
@@ -61,11 +62,19 @@ mod tests {
     use super::RustFsConfig;
 
     #[test]
-    fn default_bind_is_loopback() {
+    fn default_bind_is_every_interface_with_the_console_on() {
         let config = RustFsConfig::default();
-        assert_eq!(config.bind_host(), "127.0.0.1");
+        assert_eq!(config.bind_host(), "0.0.0.0");
         assert_eq!(config.api_port(), 9000);
         assert_eq!(config.console_port(), 9001);
-        assert!(!config.console_enable);
+        assert!(config.console_enable);
+        assert_eq!(
+            config.access_key.as_deref(),
+            Some(super::DEFAULT_ACCESS_KEY)
+        );
+        assert_eq!(
+            config.secret_key.as_deref(),
+            Some(super::DEFAULT_SECRET_KEY)
+        );
     }
 }

@@ -3,17 +3,17 @@
 [English](README.md) · [Deutsch](README_DE.md) · [Français](README_FR.md) · [日本語](README_JA.md) · [한국어](README_KO.md) · **简体中文** · [हिन्दी](README_HI.md)
 
 RustFS Launcher 是一个小巧的桌面程序，用来在自己的电脑上运行 [RustFS](https://github.com/rustfs/rustfs)
-这个兼容 S3 的对象存储服务。选一个文件夹，按一下按钮，你就有了一个位于 `http://127.0.0.1:9000` 的 S3 端点。
+这个兼容 S3 的对象存储服务。选一个文件夹，按一下按钮，RustFS 就会在所有网卡的 `9000` 端口上监听。本机访问地址是 `http://127.0.0.1:9000`。同一网络里的其他设备，用这台电脑的地址和同一个端口就能连上。初始密钥是 `rustfsadmin` / `rustfsadmin`。
 
 服务端本身已经打包在程序里，不需要再装别的东西，不用开终端，也没有配置文件要改。
 
-![服务在线时 Data Path 仍在首屏，日志保持隐藏](docs/images/launcher-running.png)
+![启动之后：监听地址、当前密钥，以及停止](docs/images/launcher-running.png)
 
 ## 它能帮你做什么
 
 - 不依赖 Docker，在自己的笔记本上跑一套对象存储，用于开发、测试或作为个人备份目标。
-- 把任意 S3 客户端或 SDK 指向 `127.0.0.1`，像用云上的 Bucket 一样使用。
-- 随时了解服务状态：是否在线、占用了哪些端口。日志默认隐藏，只有你打开时才会出现。
+- 把任意 S3 客户端或 SDK 指向这个端点，像用云上的 Bucket 一样使用。本机用 `127.0.0.1`。同一网络里的其他设备，用这台电脑的地址和端口 `9000`。
+- 启动之后可以复制监听地址和当前密钥。日志默认隐藏，只有你打开时才会出现。
 - 想启动就启动，想停止就停止。服务运行期间，启动器会缩在托盘里继续待命。
 - 在程序内部升级启动器（连同内置的 RustFS 一起）。
 
@@ -61,34 +61,46 @@ RustFS 会把对象保存在你指定的文件夹里，并且要求这个文件�
 
 服务端自己的日志会写到同级的 `logs` 文件夹里，也就是本例中的 `D:\RustFS\logs`。
 
-### 5. 填写表单
+### 5. 选择数据文件夹
 
-![配置面板](docs/images/launcher-config.png)
+![启动之前：数据路径和 Launch RustFS](docs/images/launcher-ready.png)
 
-| 字段 | 含义 |
+首屏只有数据路径和 **Launch RustFS**。**Launch RustFS** 一直显示。路径是空的时候，它以 40% 的不透明度呈灰色，不能点。点 **Browse**、自己输入路径，或把文件夹拖进窗口。
+
+主机、端口、控制台和密钥都不在这一屏。标题栏末尾的齿轮打开 **Settings**，一个小面板，用来改主机、API 端口和控制台。它不是第二个启动按钮，也不是单独的一页。
+
+![设置：主机、API 端口和控制台](docs/images/launcher-config.png)
+
+新安装的默认值是：
+
+| 设置 | 默认 |
 | --- | --- |
-| **Data Path** | 第 4 步建好的文件夹。点 **Browse** 选择，或者把文件夹直接拖到窗口里。这是唯一必填项。 |
-| **API Port** | S3 端点的端口。没有别的程序占用时，保持 `9000` 即可。 |
-| **Host** | 填 `127.0.0.1` 表示只在本机可用；填 `0.0.0.0` 则同一网络里的其他设备也能访问。 |
-| **Console Endpoint** | 想用 RustFS 的网页控制台就打开它，它使用单独的端口，默认 `9001`。 |
-| **Access Key** / **Secret Key** | S3 客户端使用的凭证，默认是 `rustfsadmin` / `rustfsadmin`，会和其他表单项一起被记住。主机不是本机回环地址时，启动器会拒绝启动，直到两项都改成非默认值；留空也会回落到这组公开凭证。 |
+| **Host** | `0.0.0.0`。同一网络里的其他设备可以访问。本机仍然打开 `127.0.0.1`。 |
+| **API 端口** | `9000` |
+| **Console** | 打开，端口 `9001` |
+| **Access key** / **Secret key** | `rustfsadmin` / `rustfsadmin`。启动器不会另造一对密钥。 |
+
+需要改主机、端口或控制台时，启动前在 **Settings** 里改。密钥在服务起来之后，用 **Change administrator** 改。那里的修改下次启动才生效。正在运行的服务仍使用启动时的密钥，直到你再次启动。
+
+页脚是当前版本，然后是 **Upgrade**、**Website**、**Docs** 和 **GitHub**。**Upgrade** 打开更新面板，它不是主按钮。
 
 填过的内容会被记住，下次启动点一下就行。
 
-### 6. 点击 Launch
+### 6. 点击 Launch RustFS
 
-窗口打开时就能看到 **Data Path** 和 **Launch RustFS**，不用滚动。日志一直隐藏，直到你点 **Show logs**。
-**Hide logs** 会再把面板关上。启动时的检查和更新提示都不会自动展开日志。
+不用滚动就能看到路径和 **Launch RustFS**，960×760 的窗口和 720×640 的最小尺寸都是这样。日志一直隐藏，直到服务起来之后你点 **View logs**。**Hide logs** 或 Escape 会关上面板，并把焦点还给这个按钮。启动时的检查和更新提示都不会自动展开日志。
 
-点 **Launch RustFS**。一两秒后，状态会变成 **Service Online / Managed by Launcher**，表单随之锁定。
+点 **Launch RustFS**。启动过程中按钮上的文字变成 **Launching…**。
 
-启动、停止或升级失败时，首屏会写出原因和改法。日志面板保持关闭。最常见的两种情况是数据文件夹不存在，以及端口已被占用。
-RustFS 还会把更细的记录写到数据目录旁边的 `logs` 文件夹。只有想看逐行输出时，才点 **Show logs**。
+启动、停止或升级失败时，屏幕会写出原因和改法。这段说明不会把路径和 **Launch RustFS**（服务起来之后则是 **Stop RustFS**）挤出视野，也不会打开日志面板。最常见的两种情况是数据文件夹不存在，以及端口已被占用。RustFS 还会把更细的记录写到数据目录旁边的 `logs` 文件夹。只有想看逐行输出时，才点 **View logs**。
 
 ### 7. 开始使用
 
-服务在线时，启动按钮下方的 **API** 和 **Console** 卡片可以点击。**Console** 打开网页界面；**API** 打开的是 S3 端点本身，
-用浏览器访问只会看到一段 XML —— 这个地址是给 S3 客户端用的。
+启动成功后，路径框会离开这一屏。屏幕上是监听地址，以及服务正在使用的 Access Key 和 Secret Key。每一项都可以复制。**Copy** 是描边按钮。地址和密钥马上就能用，没有额外的确认步骤。
+
+默认主机下，监听地址是 `http://0.0.0.0:9000`。本机把 S3 客户端指向 `http://127.0.0.1:9000`。同一网络里的其他设备，用这台电脑的地址和端口 `9000`。密钥在你改掉之前是 `rustfsadmin` 和 `rustfsadmin`。
+
+**Open Console** 打开网页控制台。**View logs** 打开日志面板。**Change administrator** 用来为下次启动设置另一组 Access Key 和 Secret Key。这一屏上唯一的实心按钮是 **Stop RustFS**，用来停止服务。
 
 把 S3 客户端指向这个端点：
 
@@ -97,7 +109,7 @@ aws --endpoint-url http://127.0.0.1:9000 s3 mb s3://demo
 aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 ```
 
-凭证用你填的 Access Key 和 Secret Key，区域填 `us-east-1`，寻址方式选 path-style。
+凭证用屏幕上显示的 Access Key 和 Secret Key，区域填 `us-east-1`，寻址方式选 path-style。想换一对密钥，点 **Change administrator**，停止服务后再启动一次。
 
 在控制台里，用同一组 Access Key 和 Secret Key 登录即可。
 
@@ -105,7 +117,7 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ### 8. 停止，或者让它继续跑
 
-点 **Stop RustFS** 会停止服务，表单也随之解锁。
+点 **Stop RustFS** 会停止服务，并回到路径和 **Launch RustFS**。
 
 关闭窗口并不会退出程序：启动器会缩到通知区域，RustFS 继续提供服务。点击托盘图标可以把窗口叫回来，
 右键选择 **Quit** 则会停止服务并退出程序。
@@ -129,27 +141,17 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ## 界面导览
 
-![尚未启动时的界面](docs/images/launcher-ready.png)
+![启动之前：数据路径和 Launch RustFS](docs/images/launcher-ready.png)
 
-首屏是 **Data Path**、**Browse** 和 **Launch RustFS**，标题旁边是服务状态。日志在你打开之前不会出现。
+启动之前，这一屏是数据路径、**Browse** 和 **Launch RustFS**，加上设置齿轮和页脚。主机、端口、控制台和密钥在 **Settings** 或 **Change administrator** 里。日志在你打开之前不会出现。
 
-**状态标签。** 第一个说的是服务本身：*Service Online* 表示配置的主机和端口上确实有程序在响应。第二个说的是
-这个进程归谁管：
+**启动之后。** 路径框离开这一屏。监听地址和当前密钥都在屏幕上，各自带 **Copy**。**Open Console**、**View logs** 和 **Change administrator** 在 **Stop RustFS** 上面。
 
-| 标签 | 含义 |
-| --- | --- |
-| Ready to Launch | 该端口上没有任何东西在运行。 |
-| Managed by Launcher | RustFS 由启动器拉起，也可以由它停止。 |
-| Detected Externally | 端口有响应，但进程不是这里启动的，比如你在终端里手动跑的 RustFS。表单仍可编辑，方便你改端口。停止按钮不可用，因为这个进程不归启动器管。 |
+**已经有程序在监听。** 如果主机和端口上有程序在响应，但不是这个启动器拉起来的，路径这一屏会留下来并说明原因。到 **Settings** 里改端口，或者停掉那个程序。不会出现 **Stop RustFS**，因为这个进程不归启动器管。
 
-**概览卡片。** API 和 Console 显示端口号，服务在线后点击即可在浏览器中打开。Mode 只在启动器自己拉起
-RustFS 时显示锁定（*Locked*）。检测到外部进程时，表单仍是可编辑（*Editable*）。
+**升级。** 页脚显示当前版本。**Upgrade** 打开一个面板，里面有 **Check for Updates**，有新版本时还有启动器和 RustFS 的更新。它不是首屏上的主按钮。
 
-**Version & Updates。** 显示启动器版本和内置的 RustFS 版本，需要时可以检查是否有新版本。
-
-**日志。** 启动时是隐藏的。点 **Show logs** 才会打开面板；启动检查和更新提示不会替你打开。*App Logs* 是启动器自己的记录：找了哪些路径、启动了什么、为什么失败。*RustFS Output* 是服务端在
-控制台上的输出，而较新的 RustFS 会把详细日志写进文件，所以打开之后这一页常常是空的。Auto-scroll 会自动跟随新行，
-Clear 会清空两个页签。
+**日志。** 一直隐藏，直到你点 **View logs**。启动检查和更新提示不会打开面板。**Hide logs** 或 Escape 会把它关上。*App Logs* 是启动器自己的记录：找了哪些路径、启动了什么、为什么失败。*RustFS Output* 是服务端在控制台上的输出，而较新的 RustFS 会把详细日志写进文件，所以打开之后这一页常常是空的。Auto-scroll 会自动跟随新行，Clear 会清空两个页签。
 
 ## 文件都放在哪
 
@@ -163,7 +165,7 @@ Clear 会清空两个页签。
 
 ## 升级
 
-Version & Updates 卡片负责 **两类互相独立的升级**，都通过 **Check for Updates** 触发（仅 Windows 和 macOS）：
+页脚里的 **Upgrade** 负责 **两类互相独立的升级**，都通过 **Check for Updates** 触发（仅 Windows 和 macOS）：
 
 1. **Launcher** — 带签名的整包升级，会替换启动器以及内置的 RustFS，然后重启程序。
 2. **RustFS** — 只更新服务端二进制。启动器从上游发布源下载对应平台的压缩包，用 `SHA256SUMS` 校验，再做一次
@@ -177,17 +179,13 @@ Version & Updates 卡片负责 **两类互相独立的升级**，都通过 **Che
 
 **“Data path does not exist”** —— 先在资源管理器或访达里把文件夹建好，启动器不会替你创建。
 
-**“Port 9000 is already in use”** —— 端口被别的程序（或旧的 RustFS）占用了。换一个 API 端口，或者关掉那个
-程序。控制台端口同理。
+**“Port 9000 is already in use”** —— 端口被别的程序（或旧的 RustFS）占用了。在 **Settings** 里换一个 API 端口，或者关掉那个程序。控制台端口同理。
 
-**标签显示 Detected Externally** —— 该主机和端口上已经有 RustFS 在响应，但不是这个启动器拉起来的。请到当初
-启动它的地方停掉，或者给启动器换个端口。
+**屏幕说已经有程序在监听** —— 该主机和端口上已经有 RustFS 在响应，但不是这个启动器拉起来的。请到当初启动它的地方停掉，或者在 **Settings** 里换个端口。
 
-**RustFS Output 一直是空的** —— 这是你打开日志之后常见的情况。较新的 RustFS 把日志写进数据文件夹旁边的 `logs` 目录。启动器
-自己的动作在另一个页签 App Logs 里。
+**RustFS Output 一直是空的** —— 打开 **View logs** 之后常见的情况。较新的 RustFS 把日志写进数据文件夹旁边的 `logs` 目录。启动器自己的动作在另一个页签 App Logs 里。
 
-**浏览器里出现 `AccessDenied` 之类的 XML** —— 这是 S3 API 在回应浏览器，并不是出了故障。想看网页界面就点
-**Console** 卡片，而 API 地址请填到 S3 客户端里。
+**浏览器里出现 `AccessDenied` 之类的 XML** —— 这是 S3 API 在回应浏览器，并不是出了故障。想看网页界面就点 **Open Console**，把监听地址填到 S3 客户端里。
 
 **窗口不见了** —— 关闭窗口只是把它隐藏起来。Windows 上用通知区域的图标，macOS 上点 Dock 图标即可。
 
