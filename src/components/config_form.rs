@@ -89,8 +89,9 @@ pub fn ConfigForm(
     #[prop(into)] clear_action_failure: Callback<()>,
     #[prop(into)] settings_open: Signal<bool>,
     #[prop(into)] set_settings_open: WriteSignal<bool>,
+    #[prop(into)] on_dismiss_settings: Callback<()>,
     #[prop(into)] admin_open: Signal<bool>,
-    #[prop(into)] set_admin_open: WriteSignal<bool>,
+    #[prop(into)] on_dismiss_admin: Callback<()>,
     host_input_ref: NodeRef<leptos::html::Input>,
     access_key_input_ref: NodeRef<leptos::html::Input>,
 ) -> impl IntoView {
@@ -335,6 +336,7 @@ pub fn ConfigForm(
             action_busy.get(),
             config.get().data_path.trim().is_empty(),
             false,
+            false,
         )
     };
 
@@ -399,7 +401,7 @@ pub fn ConfigForm(
 
         <Show when=move || settings_open.get()>
             <div class="overlay-layer">
-                <div class="overlay-backdrop" on:click=move |_| set_settings_open.set(false)></div>
+                <div class="overlay-backdrop" on:click=move |_| on_dismiss_settings.run(())></div>
                 <div
                     class="overlay-panel"
                     role="dialog"
@@ -412,13 +414,13 @@ pub fn ConfigForm(
                             type="button"
                             class="icon-button"
                             aria-label="Close settings"
-                            on:click=move |_| set_settings_open.set(false)
+                            on:click=move |_| on_dismiss_settings.run(())
                         >
                             "×"
                         </button>
                     </div>
                     <p class="overlay-note">
-                        "Host, port, and console apply the next time you launch. The default host is 0.0.0.0, so other devices on your network can connect."
+                        "Host, port, and console apply the next time you launch. A new install fills in 0.0.0.0, so other devices on your network can connect. An empty host stays on this computer."
                     </p>
                     <div class="form-row">
                         <div class="form-group">
@@ -498,7 +500,7 @@ pub fn ConfigForm(
 
         <Show when=move || admin_open.get()>
             <div class="overlay-layer">
-                <div class="overlay-backdrop" on:click=move |_| set_admin_open.set(false)></div>
+                <div class="overlay-backdrop" on:click=move |_| on_dismiss_admin.run(())></div>
                 <div
                     class="overlay-panel"
                     role="dialog"
@@ -511,7 +513,7 @@ pub fn ConfigForm(
                             type="button"
                             class="icon-button"
                             aria-label="Close change administrator"
-                            on:click=move |_| set_admin_open.set(false)
+                            on:click=move |_| on_dismiss_admin.run(())
                         >
                             "×"
                         </button>

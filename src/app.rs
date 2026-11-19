@@ -157,7 +157,9 @@ fn load_config() -> RustFsConfig {
         if let Ok(Some(storage)) = window.local_storage() {
             if let Ok(Some(json)) = storage.get_item("rustfs_config") {
                 if let Ok(config) = serde_json::from_str::<PersistedConfig>(&json) {
-                    return config.into();
+                    let mut loaded = RustFsConfig::from(config);
+                    loaded.host = crate::helpers::normalize_saved_host(loaded.host);
+                    return loaded;
                 }
             }
         }
@@ -194,6 +196,55 @@ static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 static HEALTH_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 static UPDATE_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 static STATUS_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn trap_dialog_tab(ev: &web_sys::KeyboardEvent) {
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        return;
+    };
+    let Ok(Some(panel)) = document.query_selector("[role='dialog']") else {
+        return;
+    };
+    let Ok(nodes) = panel.query_selector_all(
+        "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+    ) else {
+        return;
+    };
+    let mut items = Vec::new();
+    for index in 0..nodes.length() {
+        if let Some(node) = nodes.item(index) {
+            if let Ok(element) = node.dyn_into::<web_sys::HtmlElement>() {
+                items.push(element);
+            }
+        }
+    }
+    if items.is_empty() {
+        ev.prevent_default();
+        return;
+    }
+    let active = document.active_element();
+    let position = items.iter().position(|item| {
+        active
+            .as_ref()
+            .is_some_and(|current| current.is_same_node(Some(item.as_ref())))
+    });
+    let last = items.len() - 1;
+    let target = if ev.shift_key() {
+        match position {
+            Some(0) | None => Some(&items[last]),
+            _ => None,
+        }
+    } else {
+        match position {
+            None => Some(&items[0]),
+            Some(index) if index == last => Some(&items[0]),
+            _ => None,
+        }
+    };
+    if let Some(target) = target {
+        ev.prevent_default();
+        let _ = target.focus();
+    }
+}
 
 fn focus_later(focus: impl Fn() + 'static) {
     request_animation_frame(move || {
@@ -407,6 +458,10 @@ pub fn App() -> impl IntoView {
     };
 
     let close_logs = move |ev: web_sys::KeyboardEvent| {
+        if ev.key() == "Tab" {
+            trap_dialog_tab(&ev);
+            return;
+        }
         if ev.key() != "Escape" {
             return;
         }
@@ -1161,26 +1216,51 @@ pub fn App() -> impl IntoView {
         open_service_url(url);
     };
 
+    let copy_failed = move || {
+        show_toast(
+            "Could not copy. Select the value and copy it manually.".to_string(),
+            ToastType::Error,
+        );
+    };
+
     let copy_text = move |text: String| {
+        let fail = copy_failed;
         let Some(window) = web_sys::window() else {
+            fail();
             return;
         };
         let Ok(navigator) = js_sys::Reflect::get(&window, &JsValue::from_str("navigator")) else {
+            fail();
             return;
         };
         let Ok(clipboard) = js_sys::Reflect::get(&navigator, &JsValue::from_str("clipboard"))
         else {
+            fail();
             return;
         };
         let Ok(write_text) = js_sys::Reflect::get(&clipboard, &JsValue::from_str("writeText"))
         else {
+            fail();
             return;
         };
         let Some(write_text) = write_text.dyn_ref::<js_sys::Function>() else {
+            fail();
             return;
         };
-        let _ = write_text.call1(&clipboard, &JsValue::from_str(&text));
-        show_toast("Copied".to_string(), ToastType::Success);
+        let Ok(result) = write_text.call1(&clipboard, &JsValue::from_str(&text)) else {
+            fail();
+            return;
+        };
+        let Ok(promise) = result.dyn_into::<js_sys::Promise>() else {
+            fail();
+            return;
+        };
+        spawn_local(async move {
+            match wasm_bindgen_futures::JsFuture::from(promise).await {
+                Ok(_) => show_toast("Copied".to_string(), ToastType::Success),
+                Err(_) => fail(),
+            }
+        });
     };
 
     let screen = move || {
@@ -1189,6 +1269,7 @@ pub fn App() -> impl IntoView {
             action_busy.get(),
             config.get().data_path.trim().is_empty(),
             logs_open.get(),
+            action_failure.get().is_some(),
         )
     };
 
@@ -1249,8 +1330,9 @@ pub fn App() -> impl IntoView {
                             clear_action_failure=Callback::new(move |_| set_action_failure.set(None))
                             settings_open=settings_open
                             set_settings_open=set_settings_open
+                            on_dismiss_settings=Callback::new(move |_| close_settings())
                             admin_open=admin_open
-                            set_admin_open=set_admin_open
+                            on_dismiss_admin=Callback::new(move |_| close_admin())
                             host_input_ref=host_input_ref
                             access_key_input_ref=access_key_input_ref
                         />
@@ -1311,44 +1393,50 @@ pub fn App() -> impl IntoView {
 
                         <Show when=move || screen().show_secondary_actions>
                             <div class="secondary-actions">
-                                <button
-                                    type="button"
-                                    class=control_class(ControlWeight::Outline)
-                                    disabled=move || {
-                                        session
-                                            .get()
-                                            .map(|endpoint| !endpoint.console_enabled)
-                                            .unwrap_or(true)
-                                    }
-                                    on:click=open_console
-                                >
-                                    "Open Console"
-                                </button>
-                                <button
-                                    type="button"
-                                    class=control_class(ControlWeight::Outline)
-                                    node_ref=logs_toggle_ref
-                                    aria-expanded=move || if logs_open.get() { "true" } else { "false" }
-                                    aria-controls="logs-panel"
-                                    on:click=toggle_logs
-                                >
-                                    {move || if logs_open.get() { "Hide logs" } else { "View logs" }}
-                                </button>
-                                <button
-                                    type="button"
-                                    class=control_class(ControlWeight::Outline)
-                                    node_ref=admin_button_ref
-                                    aria-expanded=move || if admin_open.get() { "true" } else { "false" }
-                                    aria-haspopup="dialog"
-                                    on:click=move |_| {
-                                        let next = !admin_open.get_untracked();
-                                        set_settings_open.set(false);
-                                        set_upgrade_open.set(false);
-                                        set_admin_open.set(next);
-                                    }
-                                >
-                                    "Change administrator"
-                                </button>
+                                <Show when=move || screen().show_open_console>
+                                    <button
+                                        type="button"
+                                        class=control_class(ControlWeight::Outline)
+                                        disabled=move || {
+                                            session
+                                                .get()
+                                                .map(|endpoint| !endpoint.console_enabled)
+                                                .unwrap_or(true)
+                                        }
+                                        on:click=open_console
+                                    >
+                                        "Open Console"
+                                    </button>
+                                </Show>
+                                <Show when=move || screen().show_logs_toggle>
+                                    <button
+                                        type="button"
+                                        class=control_class(ControlWeight::Outline)
+                                        node_ref=logs_toggle_ref
+                                        aria-expanded=move || if logs_open.get() { "true" } else { "false" }
+                                        aria-controls="logs-panel"
+                                        on:click=toggle_logs
+                                    >
+                                        {move || if logs_open.get() { "Hide logs" } else { "View logs" }}
+                                    </button>
+                                </Show>
+                                <Show when=move || screen().show_change_admin>
+                                    <button
+                                        type="button"
+                                        class=control_class(ControlWeight::Outline)
+                                        node_ref=admin_button_ref
+                                        aria-expanded=move || if admin_open.get() { "true" } else { "false" }
+                                        aria-haspopup="dialog"
+                                        on:click=move |_| {
+                                            let next = !admin_open.get_untracked();
+                                            set_settings_open.set(false);
+                                            set_upgrade_open.set(false);
+                                            set_admin_open.set(next);
+                                        }
+                                    >
+                                        "Change administrator"
+                                    </button>
+                                </Show>
                             </div>
                         </Show>
 

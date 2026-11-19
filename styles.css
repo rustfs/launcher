@@ -144,7 +144,7 @@ input {
 .workspace-scroll {
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   justify-content: safe center;

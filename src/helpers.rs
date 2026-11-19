@@ -1,5 +1,5 @@
 use crate::types::{
-    DEFAULT_ACCESS_KEY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST, DEFAULT_SECRET_KEY,
+    DEFAULT_ACCESS_KEY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_SECRET_KEY,
 };
 use std::net::IpAddr;
 
@@ -21,11 +21,20 @@ pub fn display_host(host: Option<&str>) -> String {
     }
 }
 
+/// A saved empty host is the previous loopback fallback. A fresh install sets
+/// `0.0.0.0` explicitly, so this does not change that default.
+pub fn normalize_saved_host(host: Option<String>) -> Option<String> {
+    match host {
+        Some(value) if !value.trim().is_empty() => Some(value),
+        _ => Some(BROWSER_LOOPBACK.to_string()),
+    }
+}
+
 fn bind_host_label(host: Option<&str>) -> String {
     let host = host
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or(DEFAULT_HOST);
+        .unwrap_or(BROWSER_LOOPBACK);
     if host.contains(':') && !host.starts_with('[') {
         format!("[{host}]")
     } else {
@@ -53,7 +62,7 @@ pub fn endpoint_is_on_lan(host: Option<&str>) -> bool {
     let host = host
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or(DEFAULT_HOST);
+        .unwrap_or(BROWSER_LOOPBACK);
     let bare = host
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
@@ -181,6 +190,9 @@ pub struct FirstScreenState {
     pub show_listening_address: bool,
     pub show_current_credentials: bool,
     pub show_secondary_actions: bool,
+    pub show_open_console: bool,
+    pub show_logs_toggle: bool,
+    pub show_change_admin: bool,
     pub settings_is_primary: bool,
     pub settings_is_overlay: bool,
     pub logs_visible: bool,
@@ -194,9 +206,14 @@ pub fn first_screen_state(
     busy: bool,
     data_path_empty: bool,
     logs_requested: bool,
+    launch_failed: bool,
 ) -> FirstScreenState {
     let action = primary_action(can_stop, busy, data_path_empty);
     let post_start = can_stop;
+    // View logs stays available after a failure, and while the panel is open,
+    // so Escape still has a button to return to. It stays off a fresh screen.
+    let show_logs_toggle = post_start || logs_requested || launch_failed;
+    let show_change_admin = post_start || launch_failed;
     FirstScreenState {
         phase: if post_start {
             ScreenPhase::PostStart
@@ -218,7 +235,10 @@ pub fn first_screen_state(
         show_credentials_on_first_screen: false,
         show_listening_address: post_start,
         show_current_credentials: post_start,
-        show_secondary_actions: post_start,
+        show_secondary_actions: show_logs_toggle || show_change_admin,
+        show_open_console: post_start,
+        show_logs_toggle,
+        show_change_admin,
         settings_is_primary: false,
         settings_is_overlay: true,
         logs_visible: logs_requested,
@@ -610,10 +630,10 @@ fn ensure_sentence(text: &str) -> String {
 mod tests {
     use super::{
         capture_endpoint, control_class, credential_in_use, display_host, endpoint_is_on_lan,
-        first_screen_state, listening_address, logs_open_by_default, operation_failure,
-        primary_action, progress_percent, reachability_note, rustfs_idle_message,
-        rustfs_source_label, settings_control_class, status_poll_is_current, ControlWeight,
-        OperationKind, ScreenPhase,
+        first_screen_state, listening_address, logs_open_by_default, normalize_saved_host,
+        operation_failure, primary_action, progress_percent, reachability_note,
+        rustfs_idle_message, rustfs_source_label, settings_control_class, status_poll_is_current,
+        ControlWeight, OperationKind, ScreenPhase,
     };
     use crate::types::RustFsConfig;
 
@@ -684,7 +704,7 @@ mod tests {
 
     #[test]
     fn fresh_screen_shows_only_path_and_a_disabled_launch() {
-        let state = first_screen_state(false, false, true, logs_open_by_default());
+        let state = first_screen_state(false, false, true, logs_open_by_default(), false);
         assert_eq!(state.phase, ScreenPhase::PreStart);
         assert!(state.show_path);
         assert!(state.launch_visible);
@@ -708,12 +728,14 @@ mod tests {
 
     #[test]
     fn choosing_a_path_enables_launch_without_opening_logs() {
-        let state = first_screen_state(false, false, false, false);
+        let state = first_screen_state(false, false, false, false, false);
         assert!(state.launch_visible);
         assert!(!state.launch_disabled);
         assert!(!state.logs_visible);
+        assert!(!state.show_logs_toggle);
+        assert!(!state.show_change_admin);
 
-        let launching = first_screen_state(false, true, false, false);
+        let launching = first_screen_state(false, true, false, false, false);
         assert_eq!(launching.phase, ScreenPhase::PreStart);
         assert_eq!(launching.launch_label, "Launching…");
         assert!(launching.launch_disabled);
@@ -723,7 +745,7 @@ mod tests {
 
     #[test]
     fn post_start_replaces_launch_with_stop_and_shows_the_endpoint() {
-        let state = first_screen_state(true, false, false, false);
+        let state = first_screen_state(true, false, false, false, false);
         assert_eq!(state.phase, ScreenPhase::PostStart);
         assert!(!state.show_path);
         assert!(!state.launch_visible);
@@ -745,7 +767,7 @@ mod tests {
             "button button-outline"
         );
 
-        let stopping = first_screen_state(true, true, false, false);
+        let stopping = first_screen_state(true, true, false, false, false);
         assert!(stopping.stop_visible);
         assert!(stopping.stop_disabled);
         assert!(!stopping.launch_visible);
@@ -754,11 +776,18 @@ mod tests {
     #[test]
     fn view_logs_is_the_only_way_the_panel_opens() {
         assert!(!logs_open_by_default());
-        assert!(!first_screen_state(true, false, false, false).logs_visible);
-        assert!(first_screen_state(true, false, false, true).logs_visible);
+        assert!(!first_screen_state(true, false, false, false, false).logs_visible);
+        assert!(first_screen_state(true, false, false, true, false).logs_visible);
         let failure = operation_failure(OperationKind::Launch, "See App Logs for details.");
         assert!(!failure.reason.to_lowercase().contains("see app logs"));
-        assert!(!first_screen_state(false, false, false, false).logs_visible);
+        assert!(!first_screen_state(false, false, false, false, false).logs_visible);
+
+        let failed = first_screen_state(false, false, false, false, true);
+        assert!(!failed.logs_visible);
+        assert!(failed.show_logs_toggle);
+        assert!(failed.show_change_admin);
+        assert!(!failed.show_open_console);
+        assert!(first_screen_state(false, false, false, true, false).show_logs_toggle);
     }
 
     #[test]
@@ -793,6 +822,16 @@ mod tests {
             credential_in_use(Some("  custom  "), "rustfsadmin"),
             "custom"
         );
+        assert_eq!(normalize_saved_host(None).as_deref(), Some("127.0.0.1"));
+        assert_eq!(
+            normalize_saved_host(Some("  ".into())).as_deref(),
+            Some("127.0.0.1")
+        );
+        assert_eq!(
+            normalize_saved_host(Some("0.0.0.0".into())).as_deref(),
+            Some("0.0.0.0")
+        );
+        assert!(!endpoint_is_on_lan(None));
     }
 
     #[test]

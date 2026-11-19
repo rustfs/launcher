@@ -297,6 +297,14 @@ pub fn diagnose_binary() -> Result<String> {
     }
 }
 
+fn explicit_credential(value: Option<&str>, default: &str) -> String {
+    value
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .unwrap_or(default)
+        .to_string()
+}
+
 pub(crate) struct LaunchPlan {
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
@@ -328,22 +336,23 @@ pub(crate) fn build_launch_plan(config: &RustFsConfig, logs_dir: &Path) -> Launc
         ));
     }
 
-    if let Some(access_key) = config
-        .access_key
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        env.push(("RUSTFS_ACCESS_KEY".to_string(), access_key.to_string()));
-    }
-    if let Some(secret_key) = config
-        .secret_key
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        env.push(("RUSTFS_SECRET_KEY".to_string(), secret_key.to_string()));
-    }
+    // Always set both keys. An empty field means the published rustfsadmin
+    // pair. Leaving the variable unset would let the launcher's own
+    // environment leak a different key into the child process.
+    env.push((
+        "RUSTFS_ACCESS_KEY".to_string(),
+        explicit_credential(
+            config.access_key.as_deref(),
+            crate::config::DEFAULT_ACCESS_KEY,
+        ),
+    ));
+    env.push((
+        "RUSTFS_SECRET_KEY".to_string(),
+        explicit_credential(
+            config.secret_key.as_deref(),
+            crate::config::DEFAULT_SECRET_KEY,
+        ),
+    ));
 
     args.push("--".to_string());
     args.push(config.data_path.clone());
@@ -657,6 +666,26 @@ mod tests {
             .env
             .iter()
             .any(|(key, value)| key == "RUSTFS_CONSOLE_ENABLE" && value == "false"));
+    }
+
+    #[test]
+    fn empty_credentials_are_published_explicitly() {
+        let config = RustFsConfig {
+            data_path: "/tmp/data".into(),
+            access_key: None,
+            secret_key: Some("  ".into()),
+            ..RustFsConfig::default()
+        };
+        let plan = build_launch_plan(&config, Path::new("/tmp/logs"));
+
+        assert!(plan
+            .env
+            .iter()
+            .any(|(key, value)| key == "RUSTFS_ACCESS_KEY" && value == "rustfsadmin"));
+        assert!(plan
+            .env
+            .iter()
+            .any(|(key, value)| key == "RUSTFS_SECRET_KEY" && value == "rustfsadmin"));
     }
 
     #[cfg(unix)]
