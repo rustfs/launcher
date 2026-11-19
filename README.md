@@ -9,13 +9,13 @@ at `http://127.0.0.1:9000`.
 The server itself is bundled inside the app. There is nothing else to install, no terminal to open, and no
 configuration file to edit.
 
-![The launcher with RustFS running](docs/images/launcher-running.png)
+![RustFS is online. Data Path stays on the first screen, and logs stay hidden](docs/images/launcher-running.png)
 
 ## What you can do with it
 
 - Run object storage on your laptop for development, testing, or a personal backup target — without Docker.
 - Point any S3 client or SDK at `127.0.0.1` and use it like a bucket in the cloud.
-- Watch the server: online status, ports in use, and live logs.
+- Watch the server: online status and the ports in use. Logs stay hidden until you open them.
 - Start and stop RustFS whenever you want. The launcher keeps running in the tray while the server works.
 - Update the launcher (and the RustFS build inside it) from the app itself.
 
@@ -84,16 +84,21 @@ Your entries are remembered, so the next start is a single click.
 
 ### 6. Press Launch
 
-Click **Launch RustFS**. Within a second or two the header switches to **Service Online / Managed by
-Launcher**, the form locks itself, and **App Logs** shows what the launcher did — which binary it picked, the
-arguments it used, and the process ID it got back.
+The window opens on **Data Path** and **Launch RustFS**. You do not have to scroll to reach them. Logs stay
+hidden until you press **Show logs**. **Hide logs** closes the panel again. A startup check or an update
+message does not open it.
 
-If the launch fails, the reason is in that same log panel. The most common ones are a data folder that does not
-exist and a port that is already taken.
+Click **Launch RustFS**. Within a second or two the status switches to **Service Online / Managed by
+Launcher** and the form locks itself.
+
+If start, stop, or an update fails, the first screen states the reason and how to fix it. The log panel stays
+closed. The most common start failures are a data folder that does not exist and a port that is already taken.
+RustFS also writes detail in the `logs` folder next to the data directory. Press **Show logs** when you want
+the line-by-line output.
 
 ### 7. Use the storage
 
-While the service is online, the **API** and **Console** cards at the top become clickable. **Console** opens
+While the service is online, the **API** and **Console** cards below the launch button become clickable. **Console** opens
 the web interface; **API** opens the S3 endpoint itself, and a browser only gets an XML answer from it — that
 address is meant for S3 clients.
 
@@ -141,6 +146,9 @@ folder. Your data folder is left alone; delete it yourself if you no longer need
 
 ![The launcher before the first start](docs/images/launcher-ready.png)
 
+The first screen is **Data Path**, **Browse**, and **Launch RustFS**, with the service status beside the title.
+Logs are not shown until you open them.
+
 **Status badges.** The first badge is about the server: *Service Online* means something answers on the host
 and port you configured. The second one is about who owns that process:
 
@@ -156,9 +164,10 @@ is *Locked* only while this launcher is running RustFS. An externally detected s
 **Version & Updates.** Shows the launcher version and the RustFS version built into it, and checks for a newer
 release when you ask it to.
 
-**Logs.** *App Logs* is the launcher talking: what it looked for, what it started, why something failed. *RustFS
+**Logs.** Hidden on launch. Press **Show logs** to open the panel; startup checks and update messages do not
+open it. *App Logs* is the launcher talking: what it looked for, what it started, why something failed. *RustFS
 Output* shows whatever the server prints on its console — recent RustFS builds write their detailed logs to
-files instead, so this tab is often quiet. Auto-scroll follows new lines; Clear empties both tabs.
+files instead, so this tab is often quiet after you open it. Auto-scroll follows new lines; Clear empties both tabs.
 
 ## Where things end up
 
@@ -197,8 +206,8 @@ port, or stop the other program. The same applies to the console port.
 **The badge says Detected Externally** — a RustFS is already answering on that host and port, but this launcher
 did not start it. Stop that process where you started it, or move the launcher to a different port.
 
-**RustFS Output stays empty** — that is normal for recent RustFS builds; they write their logs into the `logs`
-folder next to your data directory. Use App Logs to see what the launcher itself is doing.
+**RustFS Output stays empty** — after you open logs, that tab is often quiet. Recent RustFS builds write their
+logs into the `logs` folder next to your data directory. The other tab, App Logs, is what the launcher itself did.
 
 **The browser shows XML like `AccessDenied`** — that is the S3 API answering a browser, and nothing is broken.
 Use the Console card for a web interface, and give the API address to an S3 client instead.
