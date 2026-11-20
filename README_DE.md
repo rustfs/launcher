@@ -126,10 +126,12 @@ wenn Sie sie wollen.
 
 ### 7. Den Speicher benutzen
 
-Nach einem erfolgreichen Start verschwindet das Pfadfeld. Der Bildschirm zeigt die lauschende Adresse sowie den
-Access Key und den Secret Key, die der Server verwendet. Jeder Wert lässt sich kopieren. **Copy** ist eine
-Schaltfläche mit Rahmen. Adresse und Schlüssel können Sie sofort verwenden. Es gibt keinen zusätzlichen
-Bestätigungsschritt.
+Nach einem erfolgreichen Start verschwindet das Pfadfeld. Ist die Konsole eingeschaltet, öffnet der Launcher
+sie einmal im Standardbrowser. Spätere Statusprüfungen öffnen sie nicht erneut. Der Bildschirm zeigt die
+lauschende Adresse sowie den Access Key und den Secret Key, die der Server verwendet. **Open in browser** neben
+der Adresse öffnet dieselbe Konsole. Es kopiert die Adresse nicht und öffnet nicht den S3-Port. Access Key und
+Secret Key haben jeweils **Copy**. Das sind Schaltflächen mit Rahmen. Adresse und Schlüssel können Sie sofort
+verwenden. Es gibt keinen zusätzlichen Bestätigungsschritt.
 
 Mit dem vorgegebenen Host lautet die lauschende Adresse `http://0.0.0.0:9000`. Auf diesem Rechner richten Sie
 einen S3-Client auf `http://127.0.0.1:9000`. Von einem anderen Gerät im selben Netz aus nehmen Sie die Adresse
@@ -191,9 +193,9 @@ Vor dem Start zeigt der Bildschirm den Datenpfad, **Browse** und **Launch RustFS
 Fußzeile. Host, Port, Konsole und Schlüssel bleiben in **Settings** oder **Change administrator**. Die
 Protokolle sind nicht zu sehen, bis Sie sie öffnen.
 
-**Nach dem Start.** Das Pfadfeld verschwindet. Die lauschende Adresse und die aktuellen Schlüssel stehen auf
-dem Bildschirm, jeweils mit **Copy**. **Open Console**, **View logs** und **Change administrator** liegen über
-**Stop RustFS**.
+**Nach dem Start.** Das Pfadfeld verschwindet. Die lauschende Adresse bleibt auf dem Bildschirm, daneben **Open
+in browser**. Access Key und Secret Key haben jeweils **Copy**. **Open Console**, **View logs** und **Change
+administrator** liegen über **Stop RustFS**. **Open Console** öffnet die Konsole erneut.
 
 **Es antwortet schon etwas.** Antwortet ein Programm auf Host und Port, das dieser Launcher nicht gestartet hat,
 bleibt der Pfadbildschirm und sagt das. Ändern Sie den Port in **Settings** oder beenden Sie das Programm.

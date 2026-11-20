@@ -126,9 +126,12 @@ données. **View logs** sert seulement si vous voulez le détail ligne à ligne.
 
 ### 7. Utiliser le stockage
 
-Après un démarrage réussi, le champ du chemin disparaît. L'écran montre l'adresse d'écoute, ainsi que l'access
-key et la secret key que le serveur utilise. Chaque valeur se copie. **Copy** est un bouton au contour. Vous
-pouvez utiliser l'adresse et les clés tout de suite. Il n'y a pas d'étape de confirmation en plus.
+Après un démarrage réussi, le champ du chemin disparaît. Si la console est activée, le launcher l'ouvre une
+fois dans le navigateur par défaut. Les contrôles d'état suivants ne l'ouvrent plus. L'écran montre l'adresse
+d'écoute, ainsi que l'access key et la secret key que le serveur utilise. **Open in browser**, à côté de
+l'adresse, ouvre cette même console. Il ne copie pas l'adresse et n'ouvre pas le port S3. L'access key et la
+secret key ont chacune **Copy**. Ce sont des boutons au contour. Vous pouvez utiliser l'adresse et les clés
+tout de suite. Il n'y a pas d'étape de confirmation en plus.
 
 Avec l'hôte par défaut, l'adresse d'écoute est `http://0.0.0.0:9000`. Sur cette machine, dirigez un client S3
 vers `http://127.0.0.1:9000`. Depuis un autre appareil du même réseau, utilisez l'adresse de cette machine et
@@ -188,9 +191,9 @@ Avant le démarrage, l'écran montre le chemin, **Browse** et **Launch RustFS**,
 page. L'hôte, le port, la console et les clés restent dans **Settings** ou **Change administrator**. Les
 journaux n'apparaissent pas tant que vous ne les ouvrez pas.
 
-**Après le démarrage.** Le champ du chemin disparaît. L'adresse d'écoute et les clés en cours sont à l'écran,
-chacune avec **Copy**. **Open Console**, **View logs** et **Change administrator** sont au-dessus de **Stop
-RustFS**.
+**Après le démarrage.** Le champ du chemin disparaît. L'adresse d'écoute reste à l'écran, avec **Open in
+browser** à côté. L'access key et la secret key ont chacune **Copy**. **Open Console**, **View logs** et
+**Change administrator** sont au-dessus de **Stop RustFS**. **Open Console** rouvre la console.
 
 **Quelque chose écoute déjà.** Si un programme répond sur l'hôte et le port sans avoir été lancé ici, l'écran
 du chemin reste et le dit. Changez le port dans **Settings**, ou arrêtez ce programme. **Stop RustFS** n'est

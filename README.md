@@ -17,7 +17,7 @@ configuration file to edit.
 
 - Run object storage on your laptop for development, testing, or a personal backup target — without Docker.
 - Point any S3 client or SDK at the endpoint and use it like a bucket in the cloud. On this computer that is `127.0.0.1`. On another device on the same network, use this computer's address and port `9000`.
-- Copy the listening address and the current keys after start. Logs stay hidden until you open them.
+- Open the console from the listening row, and copy the current keys after start. Logs stay hidden until you open them.
 - Start and stop RustFS whenever you want. The launcher keeps running in the tray while the server works.
 - Update the launcher (and the RustFS build inside it) from the app itself.
 
@@ -118,9 +118,12 @@ when you want the line-by-line output.
 
 ### 7. Use the storage
 
-After a successful start the path field leaves. The screen shows the listening address and the access key and
-secret key the server is using. Each value can be copied. **Copy** is an outline button. You can use the
-address and the keys immediately. There is no extra confirmation step.
+After a successful start the path field leaves. If the console is on, the launcher opens it in the default
+browser once. Later status checks do not open it again. The screen shows the listening address and the access
+key and secret key the server is using. **Open in browser**, beside the listening address, opens that same
+console. It does not copy the address and it does not open the S3 port. The access key and secret key each
+have **Copy**. Those buttons are outlines. You can use the address and the keys immediately. There is no extra
+confirmation step.
 
 With the default host the listening address is `http://0.0.0.0:9000`. On this computer, point an S3 client
 at `http://127.0.0.1:9000`. From another device on the same network, use this computer's address and port
@@ -179,8 +182,9 @@ Before start, the screen is the data path, **Browse**, and **Launch RustFS**, pl
 footer. Host, port, console, and keys stay in **Settings** or **Change administrator**. Logs are not shown
 until you open them.
 
-**After start.** The path field leaves. The listening address and the current keys are on the screen, each
-with **Copy**. **Open Console**, **View logs**, and **Change administrator** sit above **Stop RustFS**.
+**After start.** The path field leaves. The listening address stays on screen, with **Open in browser** beside
+it. The access key and secret key each have **Copy**. **Open Console**, **View logs**, and **Change
+administrator** sit above **Stop RustFS**. **Open Console** stays available so you can open the console again.
 
 **Something else is already listening.** If a program answers on the host and port but this launcher did not
 start it, the path screen stays up and says so. Change the port in **Settings**, or stop that program. **Stop

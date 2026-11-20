@@ -120,6 +120,15 @@ pub fn capture_endpoint(
     }
 }
 
+/// Label on the listening row. It opens the console in the browser.
+pub const OPEN_IN_BROWSER_LABEL: &str = "Open in browser";
+
+/// Open the console once after a launch that succeeded with the console on.
+/// Status polls and settings edits must not call this.
+pub fn should_open_console_after_launch(success: bool, console_enabled: bool) -> bool {
+    success && console_enabled
+}
+
 pub fn rustfs_source_label(managed: bool) -> &'static str {
     if managed {
         "installed"
@@ -632,8 +641,9 @@ mod tests {
         capture_endpoint, control_class, credential_in_use, display_host, endpoint_is_on_lan,
         first_screen_state, listening_address, logs_open_by_default, normalize_saved_host,
         operation_failure, primary_action, progress_percent, reachability_note,
-        rustfs_idle_message, rustfs_source_label, settings_control_class, status_poll_is_current,
-        ControlWeight, OperationKind, ScreenPhase,
+        rustfs_idle_message, rustfs_source_label, settings_control_class,
+        should_open_console_after_launch, status_poll_is_current, ControlWeight, OperationKind,
+        ScreenPhase, OPEN_IN_BROWSER_LABEL,
     };
     use crate::types::RustFsConfig;
 
@@ -816,7 +826,15 @@ mod tests {
         assert!(endpoint.console_enabled);
         assert!(endpoint.on_lan);
         assert_eq!(endpoint.api_url, "http://127.0.0.1:9000");
-        assert!(endpoint.console_url.contains(":9001/rustfs/console/"));
+        assert_eq!(
+            endpoint.console_url,
+            "http://127.0.0.1:9001/rustfs/console/"
+        );
+        assert_ne!(endpoint.console_url, endpoint.listening_address);
+        assert!(should_open_console_after_launch(true, true));
+        assert!(!should_open_console_after_launch(true, false));
+        assert!(!should_open_console_after_launch(false, true));
+        assert_eq!(OPEN_IN_BROWSER_LABEL, "Open in browser");
         assert_eq!(credential_in_use(None, "rustfsadmin"), "rustfsadmin");
         assert_eq!(
             credential_in_use(Some("  custom  "), "rustfsadmin"),

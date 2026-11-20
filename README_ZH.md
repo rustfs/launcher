@@ -96,7 +96,7 @@ RustFS 会把对象保存在你指定的文件夹里，并且要求这个文件�
 
 ### 7. 开始使用
 
-启动成功后，路径框会离开这一屏。屏幕上是监听地址，以及服务正在使用的 Access Key 和 Secret Key。每一项都可以复制。**Copy** 是描边按钮。地址和密钥马上就能用，没有额外的确认步骤。
+启动成功后，路径框会离开这一屏。如果控制台开着，启动器会在默认浏览器里打开它一次。之后的状态检查不会再自动打开。屏幕上是监听地址，以及服务正在使用的 Access Key 和 Secret Key。监听地址旁边的 **Open in browser** 打开的是同一个控制台，不会复制地址，也不会打开 S3 端口。Access Key 和 Secret Key 各自有 **Copy**。这些都是描边按钮。地址和密钥马上就能用，没有额外的确认步骤。
 
 默认主机下，监听地址是 `http://0.0.0.0:9000`。本机把 S3 客户端指向 `http://127.0.0.1:9000`。同一网络里的其他设备，用这台电脑的地址和端口 `9000`。密钥在你改掉之前是 `rustfsadmin` 和 `rustfsadmin`。
 
@@ -145,7 +145,7 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 启动之前，这一屏是数据路径、**Browse** 和 **Launch RustFS**，加上设置齿轮和页脚。主机、端口、控制台和密钥在 **Settings** 或 **Change administrator** 里。日志在你打开之前不会出现。
 
-**启动之后。** 路径框离开这一屏。监听地址和当前密钥都在屏幕上，各自带 **Copy**。**Open Console**、**View logs** 和 **Change administrator** 在 **Stop RustFS** 上面。
+**启动之后。** 路径框离开这一屏。监听地址留在屏幕上，旁边是 **Open in browser**。Access Key 和 Secret Key 各自有 **Copy**。**Open Console**、**View logs** 和 **Change administrator** 在 **Stop RustFS** 上面。**Open Console** 可以再次打开控制台。
 
 **已经有程序在监听。** 如果主机和端口上有程序在响应，但不是这个启动器拉起来的，路径这一屏会留下来并说明原因。到 **Settings** 里改端口，或者停掉那个程序。不会出现 **Stop RustFS**，因为这个进程不归启动器管。
 

@@ -4,8 +4,9 @@ use crate::components::toast::{Toast, ToastMessage, ToastType};
 use crate::helpers::{
     capture_endpoint, control_class, display_host, first_screen_state, logs_open_by_default,
     operation_failure, progress_percent, reachability_note, rustfs_idle_message,
-    rustfs_source_label, settings_control_class, status_poll_is_current, ActiveEndpoint,
-    ControlWeight, OperationFailure, OperationKind,
+    rustfs_source_label, settings_control_class, should_open_console_after_launch,
+    status_poll_is_current, ActiveEndpoint, ControlWeight, OperationFailure, OperationKind,
+    OPEN_IN_BROWSER_LABEL,
 };
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
@@ -715,6 +716,20 @@ pub fn App() -> impl IntoView {
         sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
     };
 
+    let open_service_url = move |url: String| {
+        if !is_tauri() {
+            return;
+        }
+
+        spawn_local(async move {
+            let args = js_sys::Object::new();
+            set_js_field(&args, "url", JsValue::from_str(&url));
+            if let Err(err) = tauri_invoke("open_service_url", args.into()).await {
+                show_toast(js_error_message(err), ToastType::Error);
+            }
+        });
+    };
+
     let launch_rustfs = move |ev: SubmitEvent| {
         ev.prevent_default();
         if action_busy.get_untracked() {
@@ -826,6 +841,12 @@ pub fn App() -> impl IntoView {
                             if success {
                                 set_is_running.set(true);
                                 set_can_stop.set(true);
+                                // Once per successful launch. Status polls and
+                                // settings edits do not come through this path.
+                                if should_open_console_after_launch(true, launched.console_enabled)
+                                {
+                                    open_service_url(launched.console_url.clone());
+                                }
                                 set_session.set(Some(launched));
                                 set_action_busy.set(false);
                                 set_action_failure.set(None);
@@ -1185,20 +1206,6 @@ pub fn App() -> impl IntoView {
         });
     };
 
-    let open_service_url = move |url: String| {
-        if !is_tauri() {
-            return;
-        }
-
-        spawn_local(async move {
-            let args = js_sys::Object::new();
-            set_js_field(&args, "url", JsValue::from_str(&url));
-            if let Err(err) = tauri_invoke("open_service_url", args.into()).await {
-                show_toast(js_error_message(err), ToastType::Error);
-            }
-        });
-    };
-
     let open_console = move |_| {
         let url = session
             .get_untracked()
@@ -1343,7 +1350,7 @@ pub fn App() -> impl IntoView {
                                     let address = endpoint.listening_address.clone();
                                     let access = endpoint.access_key.clone();
                                     let secret = endpoint.secret_key.clone();
-                                    let address_copy = address.clone();
+                                    let console_enabled = endpoint.console_enabled;
                                     let access_copy = access.clone();
                                     let secret_copy = secret.clone();
                                     let note = if endpoint.on_lan {
@@ -1359,9 +1366,10 @@ pub fn App() -> impl IntoView {
                                             <button
                                                 type="button"
                                                 class=control_class(ControlWeight::Outline)
-                                                on:click=move |_| copy_text(address_copy.clone())
+                                                disabled=!console_enabled
+                                                on:click=open_console
                                             >
-                                                "Copy"
+                                                {OPEN_IN_BROWSER_LABEL}
                                             </button>
                                         </div>
                                         <div class="copy-row">
