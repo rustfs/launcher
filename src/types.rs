@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 /// values the backend falls back to.
 pub const DEFAULT_API_PORT: u16 = 9000;
 pub const DEFAULT_CONSOLE_PORT: u16 = 9001;
-pub const DEFAULT_HOST: &str = "127.0.0.1";
+/// Bind every interface. Browsers on this computer still open `127.0.0.1`.
+pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_ACCESS_KEY: &str = "rustfsadmin";
 pub const DEFAULT_SECRET_KEY: &str = "rustfsadmin";
 
@@ -38,7 +39,7 @@ impl Default for RustFsConfig {
             host: Some(DEFAULT_HOST.to_string()),
             access_key: Some(DEFAULT_ACCESS_KEY.to_string()),
             secret_key: Some(DEFAULT_SECRET_KEY.to_string()),
-            console_enable: false,
+            console_enable: true,
         }
     }
 }

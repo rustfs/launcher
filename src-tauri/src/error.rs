@@ -28,11 +28,6 @@ pub enum Error {
     #[error("Invalid bind host: {0}. Use 127.0.0.1, localhost, or an IP address such as 0.0.0.0")]
     InvalidHost(String),
 
-    #[error(
-        "Refusing to expose the default rustfsadmin credentials on {0}. Bind to 127.0.0.1, or set a unique access key and secret key. Empty credentials also fall back to rustfsadmin"
-    )]
-    InsecureBind(String),
-
     #[error("RustFS is already running")]
     AlreadyRunning,
 

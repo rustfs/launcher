@@ -4,19 +4,24 @@
 
 RustFS Launcher ist eine kleine Desktop-Anwendung, die [RustFS](https://github.com/rustfs/rustfs) – einen
 S3-kompatiblen Objektspeicher – auf dem eigenen Rechner startet. Sie wählen einen Ordner aus, drücken einen
-Knopf und haben einen S3-Endpunkt unter `http://127.0.0.1:9000`.
+Knopf, und RustFS lauscht auf allen Netzwerkschnittstellen an Port `9000`. Auf diesem Rechner ist der Endpunkt
+`http://127.0.0.1:9000`. Andere Geräte im selben Netz erreichen ihn über die Adresse dieses Rechners und denselben
+Port. Die Schlüssel beginnen mit `rustfsadmin` / `rustfsadmin`.
 
 Der Server steckt bereits in der Anwendung. Es gibt nichts weiter zu installieren, kein Terminal zu öffnen und
 keine Konfigurationsdatei zu bearbeiten.
 
-![RustFS ist online. Data Path bleibt auf dem ersten Bildschirm, die Protokolle sind verborgen](docs/images/launcher-running.png)
+![Nach dem Start: die lauschende Adresse, die aktuellen Schlüssel und Stopp](docs/images/launcher-running.png)
 
 ## Wofür Sie ihn benutzen können
 
 - Objektspeicher auf dem eigenen Laptop betreiben – für Entwicklung, Tests oder als privates Backup-Ziel, ganz
   ohne Docker.
-- Einen beliebigen S3-Client oder ein SDK auf `127.0.0.1` richten und wie einen Bucket in der Cloud benutzen.
-- Den Server im Blick behalten: Status und belegte Ports. Die Protokolle bleiben verborgen, bis Sie sie öffnen.
+- Einen beliebigen S3-Client oder ein SDK auf den Endpunkt richten und wie einen Bucket in der Cloud benutzen.
+  Auf diesem Rechner ist das `127.0.0.1`. Ein anderes Gerät im selben Netz nimmt die Adresse dieses Rechners und
+  Port `9000`.
+- Nach dem Start die lauschende Adresse und die aktuellen Schlüssel kopieren. Die Protokolle bleiben verborgen,
+  bis Sie sie öffnen.
 - RustFS jederzeit starten und stoppen. Der Launcher bleibt im Infobereich, während der Server arbeitet.
 - Den Launcher – und das darin enthaltene RustFS – aus der Anwendung heraus aktualisieren.
 
@@ -72,39 +77,69 @@ mit freiem Platz.
 Seine eigenen Protokolldateien schreibt der Server in einen `logs`-Ordner neben dem gewählten Ordner – in
 diesem Beispiel also `D:\RustFS\logs`.
 
-### 5. Das Formular ausfüllen
+### 5. Den Datenordner wählen
 
-![Der Konfigurationsbereich](docs/images/launcher-config.png)
+![Vor dem Start: Datenpfad und Launch RustFS](docs/images/launcher-ready.png)
 
-| Feld | Bedeutung |
+Der erste Bildschirm ist der Datenpfad und **Launch RustFS**. **Launch RustFS** ist immer sichtbar. Solange der
+Pfad leer ist, bleibt die Schaltfläche auf 40 % Deckkraft und lässt sich nicht drücken. **Browse** wählen, den
+Pfad eintippen oder einen Ordner auf das Fenster ziehen.
+
+Host, Port, Konsole und Schlüssel stehen nicht auf diesem Bildschirm. Das Zahnrad am Ende der Titelleiste öffnet
+**Settings**, ein kleines quadratisches Feld für Host, API-Port und Konsole. Es ist keine zweite Startschaltfläche
+und keine eigene Seite.
+
+![Einstellungen: Host, API-Port und Konsole](docs/images/launcher-config.png)
+
+Eine neue Installation verwendet diese Vorgaben:
+
+| Einstellung | Vorgabe |
 | --- | --- |
-| **Data Path** | Der Ordner aus Schritt 4. Über **Browse** auswählen oder einen Ordner ins Fenster ziehen. Das einzige Pflichtfeld. |
-| **API Port** | Der Port des S3-Endpunkts. `9000`, sofern ihn nicht schon etwas anderes belegt. |
-| **Host** | `127.0.0.1` hält den Server auf diesem Rechner. Mit `0.0.0.0` erreichen ihn auch andere Geräte im Netz. |
-| **Console Endpoint** | Einschalten, wenn Sie die RustFS-Weboberfläche möchten. Sie läuft auf einem eigenen Port, standardmäßig `9001`. |
-| **Access Key** / **Secret Key** | Die Zugangsdaten für Ihren S3-Client. Voreingestellt sind `rustfsadmin` / `rustfsadmin`, und sie werden mit dem Formular gespeichert. Auf einem Host, der nicht die lokale Loopback-Adresse ist, startet der Launcher nicht, solange beide noch der Vorgabe entsprechen; ein leeres Feld fällt ebenfalls auf dieses öffentliche Paar zurück. |
+| **Host** | `0.0.0.0`. Andere Geräte im Netz erreichen den Endpunkt. Dieser Rechner öffnet weiterhin `127.0.0.1`. |
+| **API-Port** | `9000` |
+| **Console** | Ein, Port `9001` |
+| **Access key** / **Secret key** | `rustfsadmin` / `rustfsadmin`. Der Launcher erfindet kein eigenes Paar. |
+
+Host, Ports oder Konsole ändern Sie vor dem Start in **Settings**. Die Schlüssel ändern Sie, nachdem der Server
+läuft, mit **Change administrator**. Diese Änderung gilt beim nächsten Start. Der laufende Server behält die
+Schlüssel, mit denen er gestartet wurde, bis dahin.
+
+Die Fußzeile zeigt die aktuelle Version, danach **Upgrade**, **Website**, **Docs** und **GitHub**. **Upgrade**
+öffnet das Update-Feld. Es ist nicht die Hauptschaltfläche.
 
 Die Eingaben werden gemerkt, der nächste Start ist also ein einziger Klick.
 
-### 6. Auf Launch drücken
+### 6. Launch RustFS drücken
 
-Das Fenster öffnet sich bei **Data Path** und **Launch RustFS**. Dorthin müssen Sie nicht scrollen. Die
-Protokolle bleiben verborgen, bis Sie **Show logs** drücken. **Hide logs** schließt den Bereich wieder. Eine
-Startprüfung oder eine Update-Meldung öffnet ihn nicht.
+Zum Pfad und zu **Launch RustFS** müssen Sie nicht scrollen, auch nicht in einem Fenster von 960×760 und bei
+der Mindestgröße 720×640. Die Protokolle bleiben verborgen, bis Sie nach dem Start **View logs** drücken.
+**Hide logs** oder die Escape-Taste schließt den Bereich und setzt den Fokus auf diese Schaltfläche zurück.
+Eine Startprüfung oder eine Update-Meldung öffnet ihn nicht.
 
-Klicken Sie auf **Launch RustFS**. Nach ein, zwei Sekunden wechselt der Status auf **Service Online / Managed by
-Launcher**, und das Formular sperrt sich.
+Klicken Sie auf **Launch RustFS**. Während des Starts steht auf der Schaltfläche **Launching…**.
 
-Schlägt Start, Stopp oder ein Update fehl, nennt der erste Bildschirm den Grund und wie Sie ihn beheben. Der
-Protokollbereich bleibt zu. Am häufigsten fehlt der Datenordner oder der Port ist schon belegt. RustFS schreibt
-außerdem Details in den Ordner `logs` neben dem Datenordner. **Show logs** zeigt die Zeilen nur, wenn Sie sie
-wollen.
+Schlägt Start, Stopp oder ein Update fehl, nennt der Bildschirm den Grund und wie Sie ihn beheben. Der Hinweis
+schiebt den Pfad und **Launch RustFS** (oder **Stop RustFS**, sobald der Server läuft) nicht aus dem Blick, und
+er öffnet den Protokollbereich nicht. Am häufigsten fehlt der Datenordner oder der Port ist schon belegt.
+RustFS schreibt außerdem Details in den Ordner `logs` neben dem Datenordner. **View logs** zeigt die Zeilen nur,
+wenn Sie sie wollen.
 
 ### 7. Den Speicher benutzen
 
-Solange der Dienst online ist, lassen sich die Karten **API** und **Console** unter dem Startknopf anklicken. **Console** öffnet
-die Weboberfläche; **API** öffnet den S3-Endpunkt selbst, von dem ein Browser nur eine XML-Antwort bekommt –
-diese Adresse ist für S3-Clients gedacht.
+Nach einem erfolgreichen Start verschwindet das Pfadfeld. Ist die Konsole eingeschaltet, öffnet der Launcher
+sie einmal im Standardbrowser. Spätere Statusprüfungen öffnen sie nicht erneut. Der Bildschirm zeigt die
+lauschende Adresse sowie den Access Key und den Secret Key, die der Server verwendet. **Open in browser** neben
+der Adresse öffnet dieselbe Konsole. Es kopiert die Adresse nicht und öffnet nicht den S3-Port. Access Key und
+Secret Key haben jeweils **Copy**. Das sind Schaltflächen mit Rahmen. Adresse und Schlüssel können Sie sofort
+verwenden. Es gibt keinen zusätzlichen Bestätigungsschritt.
+
+Mit dem vorgegebenen Host lautet die lauschende Adresse `http://0.0.0.0:9000`. Auf diesem Rechner richten Sie
+einen S3-Client auf `http://127.0.0.1:9000`. Von einem anderen Gerät im selben Netz aus nehmen Sie die Adresse
+dieses Rechners und Port `9000`. Die Schlüssel bleiben `rustfsadmin` und `rustfsadmin`, bis Sie sie ändern.
+
+**Open Console** öffnet die Weboberfläche. **View logs** öffnet die Protokolle. **Change administrator** setzt
+einen anderen Access Key und Secret Key für den nächsten Start. **Stop RustFS** ist auf diesem Bildschirm die
+einzige gefüllte Schaltfläche und stoppt den Server.
 
 Richten Sie einen S3-Client auf den Endpunkt:
 
@@ -113,8 +148,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 mb s3://demo
 aws --endpoint-url http://127.0.0.1:9000 s3 cp bericht.pdf s3://demo/
 ```
 
-Als Zugangsdaten dienen Access Key und Secret Key, als Region `us-east-1`, und die Adressierung erfolgt im
-Path-Style.
+Als Zugangsdaten dienen der Access Key und der Secret Key auf dem Bildschirm, als Region `us-east-1`, und die
+Adressierung erfolgt im Path-Style. Für ein anderes Paar **Change administrator** drücken, den Server stoppen
+und erneut starten.
 
 In der Konsole melden Sie sich mit demselben Access Key und Secret Key an.
 
@@ -122,7 +158,7 @@ In der Konsole melden Sie sich mit demselben Access Key und Secret Key an.
 
 ### 8. Stoppen oder weiterlaufen lassen
 
-**Stop RustFS** fährt den Server herunter und gibt das Formular wieder frei.
+**Stop RustFS** fährt den Server herunter und bringt den Pfad und **Launch RustFS** zurück.
 
 Das Schließen des Fensters beendet nichts: Der Launcher versteckt sich im Infobereich, RustFS läuft weiter. Ein
 Klick auf das Symbol holt das Fenster zurück; über die rechte Maustaste und **Quit** stoppen Sie den Server und
@@ -151,31 +187,28 @@ mehr brauchen.
 
 ## Ein Rundgang durch das Fenster
 
-![Der Launcher vor dem ersten Start](docs/images/launcher-ready.png)
+![Vor dem Start: Datenpfad und Launch RustFS](docs/images/launcher-ready.png)
 
-Der erste Bildschirm ist **Data Path**, **Browse** und **Launch RustFS**, daneben der Dienststatus. Die
+Vor dem Start zeigt der Bildschirm den Datenpfad, **Browse** und **Launch RustFS**, dazu das Zahnrad und die
+Fußzeile. Host, Port, Konsole und Schlüssel bleiben in **Settings** oder **Change administrator**. Die
 Protokolle sind nicht zu sehen, bis Sie sie öffnen.
 
-**Statusanzeigen.** Die erste betrifft den Server: *Service Online* heißt, dass auf dem eingestellten Host und
-Port etwas antwortet. Die zweite sagt, wem dieser Prozess gehört:
+**Nach dem Start.** Das Pfadfeld verschwindet. Die lauschende Adresse bleibt auf dem Bildschirm, daneben **Open
+in browser**. Access Key und Secret Key haben jeweils **Copy**. **Open Console**, **View logs** und **Change
+administrator** liegen über **Stop RustFS**. **Open Console** öffnet die Konsole erneut.
 
-| Anzeige | Bedeutung |
-| --- | --- |
-| Ready to Launch | Auf diesem Port läuft nichts. |
-| Managed by Launcher | Der Launcher hat RustFS gestartet und kann es wieder stoppen. |
-| Detected Externally | Der Port antwortet, aber der Prozess wurde nicht hier gestartet – etwa ein RustFS aus dem Terminal. Das Formular bleibt bearbeitbar, damit Sie den Port ändern können. Der Stopp-Knopf bleibt deaktiviert, weil dieser Launcher den Prozess nicht besitzt. |
+**Es antwortet schon etwas.** Antwortet ein Programm auf Host und Port, das dieser Launcher nicht gestartet hat,
+bleibt der Pfadbildschirm und sagt das. Ändern Sie den Port in **Settings** oder beenden Sie das Programm.
+**Stop RustFS** wird nicht angeboten, weil dieser Launcher den Prozess nicht besitzt.
 
-**Übersichtskarten.** API und Console zeigen die Ports und öffnen sie im Browser, sobald der Dienst online ist.
-Mode ist nur *Locked*, solange dieser Launcher RustFS selbst ausführt. Ein extern erkannter Server lässt das Formular *Editable*.
+**Upgrade.** Die Fußzeile zeigt die aktuelle Version. **Upgrade** öffnet ein Feld mit **Check for Updates** und,
+falls vorhanden, den Updates für Launcher und RustFS. Es ist keine Schaltfläche auf dem ersten Bildschirm.
 
-**Version & Updates.** Zeigt die Version des Launchers und die des eingebauten RustFS und sucht auf Wunsch nach
-einem neueren Release.
-
-**Protokolle.** Beim Start verborgen. **Show logs** öffnet den Bereich; Startprüfungen und Update-Meldungen
-öffnen ihn nicht. *App Logs* ist der Launcher selbst: wonach er gesucht hat, was er gestartet hat, warum etwas
-schiefging. *RustFS Output* zeigt, was der Server auf der Konsole ausgibt – neuere RustFS-Builds schreiben ihre
-ausführlichen Protokolle in Dateien, deshalb bleibt dieser Reiter nach dem Öffnen oft leer. Auto-scroll folgt neuen Zeilen,
-Clear leert beide Reiter.
+**Protokolle.** Verborgen, bis Sie **View logs** drücken. Startprüfungen und Update-Meldungen öffnen den Bereich
+nicht. **Hide logs** oder Escape schließt ihn. *App Logs* ist der Launcher selbst: wonach er gesucht hat, was er
+gestartet hat, warum etwas schiefging. *RustFS Output* zeigt, was der Server auf der Konsole ausgibt – neuere
+RustFS-Builds schreiben ihre ausführlichen Protokolle in Dateien, deshalb bleibt dieser Reiter nach dem Öffnen
+oft leer. Auto-scroll folgt neuen Zeilen, Clear leert beide Reiter.
 
 ## Wo was landet
 
@@ -188,7 +221,7 @@ Clear leert beide Reiter.
 
 ## Aktualisieren
 
-Klicken Sie in der Karte Version & Updates auf **Check for Updates**. Gibt es ein neueres Release, lädt der
+**Upgrade** in der Fußzeile öffnet **Check for Updates**. Gibt es ein neueres Release, lädt der
 Launcher es herunter, prüft die Signatur und installiert es. Läuft gerade RustFS, fragt der Launcher nach und
 stoppt den Server, bevor er sich selbst neu startet. Ein Update ersetzt die komplette Anwendung samt
 mitgeliefertem RustFS-Server.
@@ -201,17 +234,18 @@ Signatur- und Release-Details stehen in [docs/SELF_UPDATE.md](docs/SELF_UPDATE.m
 ihn nicht.
 
 **„Port 9000 is already in use“** – ein anderes Programm (oder ein älteres RustFS) belegt den Port. Wählen Sie
-einen anderen API-Port oder beenden Sie das andere Programm. Für den Konsolen-Port gilt dasselbe.
+in **Settings** einen anderen API-Port oder beenden Sie das andere Programm. Für den Konsolen-Port gilt dasselbe.
 
-**Es steht Detected Externally** – auf diesem Host und Port antwortet bereits ein RustFS, das dieser Launcher
-nicht gestartet hat. Beenden Sie diesen Prozess dort, wo Sie ihn gestartet haben, oder wechseln Sie den Port.
+**Der Bildschirm sagt, dass schon etwas lauscht** – auf diesem Host und Port antwortet bereits ein RustFS, das
+dieser Launcher nicht gestartet hat. Beenden Sie diesen Prozess dort, wo Sie ihn gestartet haben, oder ändern
+Sie den Port in **Settings**.
 
-**RustFS Output bleibt leer** – nachdem Sie die Protokolle geöffnet haben, ist dieser Reiter oft still. Neuere
+**RustFS Output bleibt leer** – nachdem Sie **View logs** geöffnet haben, ist dieser Reiter oft still. Neuere
 RustFS-Builds schreiben in den `logs`-Ordner neben Ihrem Datenordner. Was der Launcher selbst tut, steht im
 anderen Reiter, App Logs.
 
 **Der Browser zeigt XML wie `AccessDenied`** – das ist die S3-API, die einem Browser antwortet; es ist nichts
-kaputt. Für eine Weboberfläche nehmen Sie die Karte **Console**, die API-Adresse gehört in einen S3-Client.
+kaputt. Für eine Weboberfläche nehmen Sie **Open Console**, die lauschende Adresse gehört in einen S3-Client.
 
 **Das Fenster ist verschwunden** – Schließen versteckt es nur. Benutzen Sie das Symbol im Infobereich unter
 Windows oder das Dock-Symbol unter macOS.

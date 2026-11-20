@@ -12,6 +12,9 @@ pub(crate) fn normalize_host(host: &str) -> &str {
         .unwrap_or(trimmed)
 }
 
+/// Loopback check kept for the network unit tests. Launch no longer refuses
+/// the published credentials on a public bind; that pair is the default.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn is_loopback_host(host: &str) -> bool {
     let host = normalize_host(host);
     if host.eq_ignore_ascii_case("localhost") {

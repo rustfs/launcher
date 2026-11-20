@@ -6,11 +6,7 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: 0;
-  background:
-    linear-gradient(90deg, rgba(37, 99, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(37, 99, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
-  background-size: 24px 24px, 24px 24px, auto;
+  background: #ffffff;
 }
 
 .log-panel {
@@ -35,20 +31,22 @@
 .log-tabs {
   display: inline-flex;
   gap: 8px;
-  padding: 4px;
-  border-radius: 999px;
-  background: #edf3ff;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .log-tab {
-  border: none;
-  border-radius: 999px;
-  padding: 9px 14px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  height: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  padding: 0 16px;
+  background: #ffffff;
+  color: var(--text-primary);
+  font-family: Geist, "Segoe UI", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 .log-tab:hover {
@@ -58,7 +56,8 @@
 
 .log-tab.active {
   color: #ffffff;
-  background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-strong));
+  background: var(--brand-blue);
+  border-color: var(--brand-blue);
 }
 
 .log-actions {
@@ -76,8 +75,10 @@
 }
 
 .clear-btn {
+  height: 40px;
+  padding: 0 16px;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 0;
   padding: 8px 10px;
   background: #ffffff;
   color: var(--text-secondary);
@@ -107,8 +108,8 @@
 .log-line {
   padding: 2px 10px;
   margin-bottom: 4px;
-  border-radius: 10px;
-  background: rgba(37, 99, 255, 0.035);
+  border-radius: 0;
+  background: var(--bg-card-strong, #f4f7ff);
 }
 
 .empty-logs {
@@ -129,8 +130,8 @@
 }
 
 .log-output::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(37, 99, 255, 0.18);
+  border-radius: 0;
+  background: rgba(11, 14, 20, 0.18);
   border: 2px solid transparent;
 }
 

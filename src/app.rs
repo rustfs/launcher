@@ -2,8 +2,11 @@ use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
 use crate::helpers::{
-    display_host, operation_failure, primary_action, progress_percent, rustfs_idle_message,
-    rustfs_source_label, status_poll_is_current, OperationFailure, OperationKind,
+    capture_endpoint, control_class, display_host, first_screen_state, logs_open_by_default,
+    operation_failure, progress_percent, reachability_note, rustfs_idle_message,
+    rustfs_source_label, settings_control_class, should_open_console_after_launch,
+    status_poll_is_current, ActiveEndpoint, ControlWeight, OperationFailure, OperationKind,
+    OPEN_IN_BROWSER_LABEL,
 };
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
@@ -155,7 +158,9 @@ fn load_config() -> RustFsConfig {
         if let Ok(Some(storage)) = window.local_storage() {
             if let Ok(Some(json)) = storage.get_item("rustfs_config") {
                 if let Ok(config) = serde_json::from_str::<PersistedConfig>(&json) {
-                    return config.into();
+                    let mut loaded = RustFsConfig::from(config);
+                    loaded.host = crate::helpers::normalize_saved_host(loaded.host);
+                    return loaded;
                 }
             }
         }
@@ -185,11 +190,68 @@ fn describe_config(config: &RustFsConfig) -> String {
     )
 }
 
-const CONSOLE_UI_PATH: &str = "/rustfs/console/";
+const WEBSITE_URL: &str = "https://rustfs.com";
+const DOCS_URL: &str = "https://docs.rustfs.com";
+const GITHUB_URL: &str = "https://github.com/rustfs/rustfs";
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 static HEALTH_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 static UPDATE_CHECK_STARTED: AtomicBool = AtomicBool::new(false);
 static STATUS_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn trap_dialog_tab(ev: &web_sys::KeyboardEvent) {
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        return;
+    };
+    let Ok(Some(panel)) = document.query_selector("[role='dialog']") else {
+        return;
+    };
+    let Ok(nodes) = panel.query_selector_all(
+        "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+    ) else {
+        return;
+    };
+    let mut items = Vec::new();
+    for index in 0..nodes.length() {
+        if let Some(node) = nodes.item(index) {
+            if let Ok(element) = node.dyn_into::<web_sys::HtmlElement>() {
+                items.push(element);
+            }
+        }
+    }
+    if items.is_empty() {
+        ev.prevent_default();
+        return;
+    }
+    let active = document.active_element();
+    let position = items.iter().position(|item| {
+        active
+            .as_ref()
+            .is_some_and(|current| current.is_same_node(Some(item.as_ref())))
+    });
+    let last = items.len() - 1;
+    let target = if ev.shift_key() {
+        match position {
+            Some(0) | None => Some(&items[last]),
+            _ => None,
+        }
+    } else {
+        match position {
+            None => Some(&items[0]),
+            Some(index) if index == last => Some(&items[0]),
+            _ => None,
+        }
+    };
+    if let Some(target) = target {
+        ev.prevent_default();
+        let _ = target.focus();
+    }
+}
+
+fn focus_later(focus: impl Fn() + 'static) {
+    request_animation_frame(move || {
+        request_animation_frame(move || focus());
+    });
+}
 
 fn current_status_generation() -> u64 {
     STATUS_GENERATION.load(Ordering::SeqCst)
@@ -284,8 +346,18 @@ pub fn App() -> impl IntoView {
     let (rustfs_update_progress, set_rustfs_update_progress) = signal(None::<u32>);
     // Logs stay closed until the user opens them. Startup, update checks, and
     // failures must not set this.
-    let (logs_open, set_logs_open) = signal(false);
+    let (logs_open, set_logs_open) = signal(logs_open_by_default());
     let (action_failure, set_action_failure) = signal(None::<OperationFailure>);
+    let (settings_open, set_settings_open) = signal(false);
+    let (admin_open, set_admin_open) = signal(false);
+    let (upgrade_open, set_upgrade_open) = signal(false);
+    let (session, set_session) = signal(None::<ActiveEndpoint>);
+    let settings_button_ref = NodeRef::<leptos::html::Button>::new();
+    let admin_button_ref = NodeRef::<leptos::html::Button>::new();
+    let upgrade_button_ref = NodeRef::<leptos::html::Button>::new();
+    let host_input_ref = NodeRef::<leptos::html::Input>::new();
+    let access_key_input_ref = NodeRef::<leptos::html::Input>::new();
+    let upgrade_panel_ref = NodeRef::<leptos::html::Div>::new();
     let logs_toggle_ref = NodeRef::<leptos::html::Button>::new();
     let logs_panel_ref = NodeRef::<leptos::html::Div>::new();
     let workspace_scroll_ref = NodeRef::<leptos::html::Div>::new();
@@ -363,14 +435,114 @@ pub fn App() -> impl IntoView {
         });
     };
 
+    let focus_button = move |node: NodeRef<leptos::html::Button>| {
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if let Some(button) = node.get_untracked() {
+                    let _ = button.focus();
+                }
+            });
+        });
+    };
+
+    let close_settings = move || {
+        set_settings_open.set(false);
+        focus_button(settings_button_ref);
+    };
+    let close_admin = move || {
+        set_admin_open.set(false);
+        focus_button(admin_button_ref);
+    };
+    let close_upgrade = move || {
+        set_upgrade_open.set(false);
+        focus_button(upgrade_button_ref);
+    };
+
     let close_logs = move |ev: web_sys::KeyboardEvent| {
-        if ev.key() != "Escape" || !logs_open.get_untracked() {
+        if ev.key() == "Tab" {
+            trap_dialog_tab(&ev);
+            return;
+        }
+        if ev.key() != "Escape" {
+            return;
+        }
+        if settings_open.get_untracked() {
+            ev.prevent_default();
+            close_settings();
+            return;
+        }
+        if admin_open.get_untracked() {
+            ev.prevent_default();
+            close_admin();
+            return;
+        }
+        if upgrade_open.get_untracked() {
+            ev.prevent_default();
+            close_upgrade();
+            return;
+        }
+        if !logs_open.get_untracked() {
             return;
         }
         ev.prevent_default();
         set_logs_open.set(false);
         return_focus_to_logs_toggle();
     };
+
+    // Escape must work even when focus never lands on <main>, for example while
+    // the log panel is still taking focus.
+    {
+        let on_escape = close_logs;
+        if let Some(window) = web_sys::window() {
+            let closure = Closure::wrap(Box::new(move |ev: web_sys::KeyboardEvent| {
+                on_escape(ev);
+            }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+            let _ = window
+                .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+    }
+
+    Effect::new(move |_| {
+        if settings_open.get() {
+            focus_later(move || {
+                if let Some(input) = host_input_ref.get_untracked() {
+                    let _ = input.focus();
+                }
+            });
+        }
+    });
+    Effect::new(move |_| {
+        if admin_open.get() {
+            focus_later(move || {
+                if let Some(input) = access_key_input_ref.get_untracked() {
+                    let _ = input.focus();
+                }
+            });
+        }
+    });
+    Effect::new(move |_| {
+        if upgrade_open.get() {
+            focus_later(move || {
+                if let Some(panel) = upgrade_panel_ref.get_untracked() {
+                    let _ = panel.focus();
+                }
+            });
+        }
+    });
+    Effect::new(move |_| {
+        if can_stop.get() && session.get().is_none() {
+            let current = config.get();
+            set_session.set(Some(capture_endpoint(
+                current.host.as_deref(),
+                current.port,
+                current.console_port,
+                current.console_enable,
+                current.access_key.as_deref(),
+                current.secret_key.as_deref(),
+            )));
+        }
+    });
 
     Effect::new(move |_| {
         if !is_tauri() || HEALTH_CHECK_STARTED.swap(true, Ordering::SeqCst) {
@@ -444,6 +616,8 @@ pub fn App() -> impl IntoView {
                     set_is_running.set(false);
                     set_can_stop.set(false);
                     set_service_status.set(false);
+                    set_session.set(None);
+                    set_admin_open.set(false);
                     invalidate_status_polls();
                     sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
                     report_failure(
@@ -542,6 +716,20 @@ pub fn App() -> impl IntoView {
         sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
     };
 
+    let open_service_url = move |url: String| {
+        if !is_tauri() {
+            return;
+        }
+
+        spawn_local(async move {
+            let args = js_sys::Object::new();
+            set_js_field(&args, "url", JsValue::from_str(&url));
+            if let Err(err) = tauri_invoke("open_service_url", args.into()).await {
+                show_toast(js_error_message(err), ToastType::Error);
+            }
+        });
+    };
+
     let launch_rustfs = move |ev: SubmitEvent| {
         ev.prevent_default();
         if action_busy.get_untracked() {
@@ -587,6 +775,14 @@ pub fn App() -> impl IntoView {
             }
 
             let current_config = config.get_untracked();
+            let launched = capture_endpoint(
+                current_config.host.as_deref(),
+                current_config.port,
+                current_config.console_port,
+                current_config.console_enable,
+                current_config.access_key.as_deref(),
+                current_config.secret_key.as_deref(),
+            );
 
             leptos::logging::log!(
                 "Starting RustFS with config: data_path={}, port={:?}, host={:?}",
@@ -645,6 +841,13 @@ pub fn App() -> impl IntoView {
                             if success {
                                 set_is_running.set(true);
                                 set_can_stop.set(true);
+                                // Once per successful launch. Status polls and
+                                // settings edits do not come through this path.
+                                if should_open_console_after_launch(true, launched.console_enabled)
+                                {
+                                    open_service_url(launched.console_url.clone());
+                                }
+                                set_session.set(Some(launched));
                                 set_action_busy.set(false);
                                 set_action_failure.set(None);
                                 show_toast(
@@ -732,6 +935,8 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(false);
                                 set_can_stop.set(false);
                                 set_service_status.set(false);
+                                set_session.set(None);
+                                set_admin_open.set(false);
                                 set_action_busy.set(false);
                                 set_action_failure.set(None);
                                 settle_runtime();
@@ -1001,256 +1206,457 @@ pub fn App() -> impl IntoView {
         });
     };
 
-    let open_service_url = move |url: String| {
-        if !is_tauri() {
-            return;
-        }
+    let open_console = move |_| {
+        let url = session
+            .get_untracked()
+            .map(|endpoint| endpoint.console_url)
+            .unwrap_or_else(|| {
+                let current = config.get_untracked();
+                let host = display_host(current.host.as_deref());
+                format!(
+                    "http://{}:{}{}",
+                    host,
+                    current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT),
+                    crate::helpers::CONSOLE_UI_PATH
+                )
+            });
+        open_service_url(url);
+    };
 
+    let copy_failed = move || {
+        show_toast(
+            "Could not copy. Select the value and copy it manually.".to_string(),
+            ToastType::Error,
+        );
+    };
+
+    let copy_text = move |text: String| {
+        let fail = copy_failed;
+        let Some(window) = web_sys::window() else {
+            fail();
+            return;
+        };
+        let Ok(navigator) = js_sys::Reflect::get(&window, &JsValue::from_str("navigator")) else {
+            fail();
+            return;
+        };
+        let Ok(clipboard) = js_sys::Reflect::get(&navigator, &JsValue::from_str("clipboard"))
+        else {
+            fail();
+            return;
+        };
+        let Ok(write_text) = js_sys::Reflect::get(&clipboard, &JsValue::from_str("writeText"))
+        else {
+            fail();
+            return;
+        };
+        let Some(write_text) = write_text.dyn_ref::<js_sys::Function>() else {
+            fail();
+            return;
+        };
+        let Ok(result) = write_text.call1(&clipboard, &JsValue::from_str(&text)) else {
+            fail();
+            return;
+        };
+        let Ok(promise) = result.dyn_into::<js_sys::Promise>() else {
+            fail();
+            return;
+        };
         spawn_local(async move {
-            let args = js_sys::Object::new();
-            set_js_field(&args, "url", JsValue::from_str(&url));
-            if let Err(err) = tauri_invoke("open_service_url", args.into()).await {
-                show_toast(js_error_message(err), ToastType::Error);
+            match wasm_bindgen_futures::JsFuture::from(promise).await {
+                Ok(_) => show_toast("Copied".to_string(), ToastType::Success),
+                Err(_) => fail(),
             }
         });
     };
 
-    let open_api = move |_| {
-        let current = config.get_untracked();
-        let host = display_host(current.host.as_deref());
-        let url = format!(
-            "http://{}:{}",
-            host,
-            current.port.unwrap_or(DEFAULT_API_PORT)
-        );
-        open_service_url(url);
-    };
-
-    let open_console = move |_| {
-        let current = config.get_untracked();
-        let host = display_host(current.host.as_deref());
-        // The console port root answers with an S3 "AccessDenied" document;
-        // the web console itself is served from this sub-path.
-        let url = format!(
-            "http://{}:{}{}",
-            host,
-            current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT),
-            CONSOLE_UI_PATH
-        );
-        open_service_url(url);
+    let screen = move || {
+        first_screen_state(
+            can_stop.get(),
+            action_busy.get(),
+            config.get().data_path.trim().is_empty(),
+            logs_open.get(),
+            action_failure.get().is_some(),
+        )
     };
 
     view! {
         <style>{LOGS_CSS}</style>
-        <main
-            class="container"
-            class:logs-open=move || logs_open.get()
-            on:keydown=close_logs
-        >
+        <main class="container" class:logs-open=move || screen().logs_visible>
             <Toast toasts=toasts remove_toast=remove_toast />
 
-            <header class="topbar">
-                <div class="topbar-title">
-                    <h1>"RustFS Launcher"</h1>
-                    <div class="status-cluster" role="status" aria-live="polite">
-                        <div class="service-indicator" class:online=move || service_status.get()>
-                            <span class="status-dot"></span>
-                            <span class="status-text">
-                                {move || if service_status.get() { "Service Online" } else { "Service Offline" }}
-                            </span>
-                        </div>
-                        <div class="launcher-indicator" class:managed=move || can_stop.get()>
-                            {move || if can_stop.get() {
-                                "Managed by Launcher"
-                            } else if is_running.get() {
-                                "Detected Externally"
-                            } else {
-                                "Ready to Launch"
-                            }}
-                        </div>
-                    </div>
+            <header class="header hero-card">
+                <h1>"RustFS Launcher"</h1>
+                <p class="visually-hidden" role="status">
+                    {move || if service_status.get() { "Service online" } else { "Service offline" }}
+                </p>
+                <div class="header-tools">
+                    <button
+                        type="button"
+                        class=settings_control_class()
+                        node_ref=settings_button_ref
+                        aria-label="Settings"
+                        aria-haspopup="dialog"
+                        aria-expanded=move || if settings_open.get() { "true" } else { "false" }
+                        on:click=move |_| {
+                            let next = !settings_open.get_untracked();
+                            set_admin_open.set(false);
+                            set_upgrade_open.set(false);
+                            set_settings_open.set(next);
+                        }
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="square"
+                            stroke-linejoin="miter"
+                            aria-hidden="true"
+                        >
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.05 1.51 1.05H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </button>
                 </div>
-                <button
-                    type="button"
-                    class="logs-toggle"
-                    node_ref=logs_toggle_ref
-                    aria-expanded=move || if logs_open.get() { "true" } else { "false" }
-                    aria-controls="logs-panel"
-                    on:click=toggle_logs
-                >
-                    {move || if logs_open.get() { "Hide logs" } else { "Show logs" }}
-                </button>
             </header>
 
             <div class="workspace">
                 <div class="workspace-scroll" node_ref=workspace_scroll_ref>
-                <ConfigForm
-                    config=config
-                    set_config=set_config
-                    is_running=is_running
-                    can_stop=can_stop
-                    action_busy=action_busy
-                    on_launch=Callback::new(launch_rustfs)
-                    on_stop=Callback::new(stop_rustfs)
-                    action_failure=action_failure
-                    clear_action_failure=Callback::new(move |_| set_action_failure.set(None))
-                />
+                    <div class="stage-column">
+                        <ConfigForm
+                            config=config
+                            set_config=set_config
+                            is_running=is_running
+                            can_stop=can_stop
+                            action_busy=action_busy
+                            on_launch=Callback::new(launch_rustfs)
+                            clear_action_failure=Callback::new(move |_| set_action_failure.set(None))
+                            settings_open=settings_open
+                            set_settings_open=set_settings_open
+                            on_dismiss_settings=Callback::new(move |_| close_settings())
+                            admin_open=admin_open
+                            on_dismiss_admin=Callback::new(move |_| close_admin())
+                            host_input_ref=host_input_ref
+                            access_key_input_ref=access_key_input_ref
+                        />
 
-                <div class="summary-grid">
-                    <button
-                        type="button"
-                        class="summary-card"
-                        class:clickable=move || service_status.get()
-                        disabled=move || !service_status.get()
-                        title="Open API endpoint"
-                        on:click=open_api
-                    >
-                        <span class="summary-label">"API"</span>
-                        <strong>{move || format!(":{}", config.get().port.unwrap_or(DEFAULT_API_PORT))}</strong>
-                    </button>
-                    <button
-                        type="button"
-                        class="summary-card"
-                        class:clickable=move || service_status.get() && config.get().console_enable
-                        disabled=move || !service_status.get() || !config.get().console_enable
-                        title="Open Console"
-                        on:click=open_console
-                    >
-                        <span class="summary-label">"Console"</span>
-                        <strong>{move || {
-                            let current = config.get();
-                            if current.console_enable {
-                                format!(":{}", current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT))
-                            } else {
-                                "Disabled".to_string()
+                        <Show when=move || screen().show_listening_address>
+                            <section class="endpoint-card" aria-label="Listening address and credentials">
+                                {move || session.get().map(|endpoint| {
+                                    let address = endpoint.listening_address.clone();
+                                    let access = endpoint.access_key.clone();
+                                    let secret = endpoint.secret_key.clone();
+                                    let console_enabled = endpoint.console_enabled;
+                                    let access_copy = access.clone();
+                                    let secret_copy = secret.clone();
+                                    let note = if endpoint.on_lan {
+                                        reachability_note(Some("0.0.0.0"))
+                                    } else {
+                                        reachability_note(Some("127.0.0.1"))
+                                    };
+                                    view! {
+                                        <p class="endpoint-note">{note}</p>
+                                        <div class="copy-row">
+                                            <span class="copy-label">"Listening"</span>
+                                            <code class="copy-value">{address}</code>
+                                            <button
+                                                type="button"
+                                                class=control_class(ControlWeight::Outline)
+                                                disabled=!console_enabled
+                                                on:click=open_console
+                                            >
+                                                {OPEN_IN_BROWSER_LABEL}
+                                            </button>
+                                        </div>
+                                        <div class="copy-row">
+                                            <span class="copy-label">"Access key"</span>
+                                            <code class="copy-value">{access}</code>
+                                            <button
+                                                type="button"
+                                                class=control_class(ControlWeight::Outline)
+                                                on:click=move |_| copy_text(access_copy.clone())
+                                            >
+                                                "Copy"
+                                            </button>
+                                        </div>
+                                        <div class="copy-row">
+                                            <span class="copy-label">"Secret key"</span>
+                                            <code class="copy-value">{secret}</code>
+                                            <button
+                                                type="button"
+                                                class=control_class(ControlWeight::Outline)
+                                                on:click=move |_| copy_text(secret_copy.clone())
+                                            >
+                                                "Copy"
+                                            </button>
+                                        </div>
+                                    }
+                                })}
+                            </section>
+                        </Show>
+
+                        <Show when=move || screen().show_secondary_actions>
+                            <div class="secondary-actions">
+                                <Show when=move || screen().show_open_console>
+                                    <button
+                                        type="button"
+                                        class=control_class(ControlWeight::Outline)
+                                        disabled=move || {
+                                            session
+                                                .get()
+                                                .map(|endpoint| !endpoint.console_enabled)
+                                                .unwrap_or(true)
+                                        }
+                                        on:click=open_console
+                                    >
+                                        "Open Console"
+                                    </button>
+                                </Show>
+                                <Show when=move || screen().show_logs_toggle>
+                                    <button
+                                        type="button"
+                                        class=control_class(ControlWeight::Outline)
+                                        node_ref=logs_toggle_ref
+                                        aria-expanded=move || if logs_open.get() { "true" } else { "false" }
+                                        aria-controls="logs-panel"
+                                        on:click=toggle_logs
+                                    >
+                                        {move || if logs_open.get() { "Hide logs" } else { "View logs" }}
+                                    </button>
+                                </Show>
+                                <Show when=move || screen().show_change_admin>
+                                    <button
+                                        type="button"
+                                        class=control_class(ControlWeight::Outline)
+                                        node_ref=admin_button_ref
+                                        aria-expanded=move || if admin_open.get() { "true" } else { "false" }
+                                        aria-haspopup="dialog"
+                                        on:click=move |_| {
+                                            let next = !admin_open.get_untracked();
+                                            set_settings_open.set(false);
+                                            set_upgrade_open.set(false);
+                                            set_admin_open.set(next);
+                                        }
+                                    >
+                                        "Change administrator"
+                                    </button>
+                                </Show>
+                            </div>
+                        </Show>
+
+                        <Show when=move || screen().stop_visible>
+                            <button
+                                type="button"
+                                class=control_class(ControlWeight::Destructive)
+                                disabled=move || screen().stop_disabled
+                                on:click=stop_rustfs
+                            >
+                                "Stop RustFS"
+                            </button>
+                        </Show>
+
+                        {move || action_failure.get().map(|failure| {
+                            let reason = failure.reason.clone();
+                            let fix = failure.fix.clone();
+                            view! {
+                                <div class="alert-error" role="alert">
+                                    <p>{reason}</p>
+                                    <p>{fix}</p>
+                                </div>
                             }
-                        }}</strong>
-                    </button>
-                    <div class="summary-card">
-                        <span class="summary-label">"Mode"</span>
-                        <strong>{move || if primary_action(can_stop.get(), action_busy.get(), false).lock_form { "Locked" } else { "Editable" }}</strong>
+                        })}
                     </div>
-                </div>
-
-                <section class="update-card">
-                    <div class="update-heading">
-                        <div>
-                            <span class="summary-label">"Software Update"</span>
-                            <strong>"Version & Updates"</strong>
-                        </div>
-                        <button
-                            type="button"
-                            class="update-check-btn"
-                            disabled=updates_busy
-                            on:click=check_update
-                        >
-                            {move || if is_checking_update.get() { "Checking…" } else { "Check for Updates" }}
-                        </button>
-                    </div>
-
-                    <p class="update-platform">
-                        {move || version_info
-                            .get()
-                            .map(|info| info.platform)
-                            .unwrap_or_else(|| "Windows / macOS".to_string())}
-                    </p>
-
-                    <div class="version-row">
-                        <span>{move || format!(
-                            "Launcher {}",
-                            version_info.get().map(|info| info.launcher_version).unwrap_or_else(|| "—".to_string())
-                        )}</span>
-                        <span>{move || {
-                            let info = version_info.get();
-                            let version = info
-                                .as_ref()
-                                .map(|info| info.rustfs_version.as_str())
-                                .unwrap_or("—");
-                            let source = info
-                                .as_ref()
-                                .map(|info| rustfs_source_label(info.rustfs_managed))
-                                .unwrap_or("bundled");
-                            format!("RustFS {version} ({source})")
-                        }}</span>
-                    </div>
-
-                    {move || update_info.get().map(|info| {
-                        if info.available {
-                            let version = info.version.unwrap_or_else(|| "unknown".to_string());
-                            let notes = info.notes.unwrap_or_else(|| "No release notes for this version.".to_string());
-                            view! {
-                                <div class="update-available">
-                                    <div>
-                                        <strong>{format!("Launcher {}", version)}</strong>
-                                        <p>{notes}</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        class="update-install-btn"
-                                        disabled=updates_busy
-                                        on:click=install_update
-                                    >
-                                        {move || if is_installing_update.get() { "Installing…" } else { "Update Launcher" }}
-                                    </button>
-                                </div>
-                            }.into_any()
-                        } else {
-                            view! { <p class="update-current">"Launcher is up to date."</p> }.into_any()
-                        }
-                    })}
-
-                    {move || rustfs_update_info.get().map(|info| {
-                        if info.available {
-                            let version = info.latest_version.unwrap_or_else(|| "unknown".to_string());
-                            let detail = match (info.release_type, info.asset_name) {
-                                (Some(kind), Some(asset)) => format!("{kind} · {asset}"),
-                                (Some(kind), None) => kind,
-                                (None, Some(asset)) => asset,
-                                (None, None) => "Verified download from the RustFS release feed.".to_string(),
-                            };
-                            view! {
-                                <div class="update-available">
-                                    <div>
-                                        <strong>{format!("RustFS {}", version)}</strong>
-                                        <p>{detail}</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        class="update-install-btn"
-                                        disabled=updates_busy
-                                        on:click=install_rustfs_update
-                                    >
-                                        {move || if is_installing_rustfs.get() { "Installing…" } else { "Update RustFS" }}
-                                    </button>
-                                </div>
-                            }.into_any()
-                        } else {
-                            view! { <p class="update-current">{rustfs_idle_message(info.notes.as_deref())}</p> }.into_any()
-                        }
-                    })}
-
-                    {move || is_installing_update.get().then(|| view! {
-                        <div class="update-progress" aria-label="Launcher update progress">
-                            <div
-                                class="update-progress-bar"
-                                style:width=move || format!("{}%", update_progress.get().unwrap_or(8))
-                            ></div>
-                        </div>
-                    })}
-
-                    {move || is_installing_rustfs.get().then(|| view! {
-                        <div class="update-progress" aria-label="RustFS update progress">
-                            <div
-                                class="update-progress-bar"
-                                style:width=move || format!("{}%", rustfs_update_progress.get().unwrap_or(8))
-                            ></div>
-                        </div>
-                    })}
-                </section>
                 </div>
             </div>
 
-            <Show when=move || logs_open.get()>
+            <footer class="footer">
+                <p class="footer-version">{move || match version_info.get() {
+                    Some(info) if info.rustfs_version != info.launcher_version => {
+                        format!(
+                            "Current version: {} · RustFS {}",
+                            info.launcher_version, info.rustfs_version
+                        )
+                    }
+                    Some(info) => format!("Current version: {}", info.launcher_version),
+                    None => "Current version: —".to_string(),
+                }}</p>
+                <nav class="footer-links" aria-label="Product links">
+                    <button
+                        type="button"
+                        class="footer-link"
+                        node_ref=upgrade_button_ref
+                        aria-expanded=move || if upgrade_open.get() { "true" } else { "false" }
+                        aria-haspopup="dialog"
+                        on:click=move |_| {
+                            let next = !upgrade_open.get_untracked();
+                            set_settings_open.set(false);
+                            set_admin_open.set(false);
+                            set_upgrade_open.set(next);
+                        }
+                    >
+                        "Upgrade"
+                    </button>
+                    <span class="footer-sep" aria-hidden="true">"|"</span>
+                    <button
+                        type="button"
+                        class="footer-link"
+                        on:click=move |_| open_service_url(WEBSITE_URL.to_string())
+                    >
+                        "Website"
+                    </button>
+                    <span class="footer-sep" aria-hidden="true">"|"</span>
+                    <button
+                        type="button"
+                        class="footer-link"
+                        on:click=move |_| open_service_url(DOCS_URL.to_string())
+                    >
+                        "Docs"
+                    </button>
+                    <span class="footer-sep" aria-hidden="true">"|"</span>
+                    <button
+                        type="button"
+                        class="footer-link"
+                        on:click=move |_| open_service_url(GITHUB_URL.to_string())
+                    >
+                        "GitHub"
+                    </button>
+                </nav>
+            </footer>
+
+            <Show when=move || upgrade_open.get()>
+                <div class="overlay-layer">
+                    <div class="overlay-backdrop" on:click=move |_| close_upgrade()></div>
+                    <div
+                        class="overlay-panel overlay-panel-upgrade"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="upgrade-title"
+                        tabindex="-1"
+                        node_ref=upgrade_panel_ref
+                    >
+                        <div class="overlay-heading">
+                            <h2 id="upgrade-title">"Upgrade"</h2>
+                            <button
+                                type="button"
+                                class="icon-button"
+                                aria-label="Close upgrade"
+                                on:click=move |_| close_upgrade()
+                            >
+                                "×"
+                            </button>
+                        </div>
+                        <div class="update-heading">
+                            <p class="update-platform">
+                                {move || version_info
+                                    .get()
+                                    .map(|info| info.platform)
+                                    .unwrap_or_else(|| "Windows / macOS".to_string())}
+                            </p>
+                            <button
+                                type="button"
+                                class=control_class(ControlWeight::Outline)
+                                disabled=updates_busy
+                                on:click=check_update
+                            >
+                                {move || if is_checking_update.get() { "Checking…" } else { "Check for Updates" }}
+                            </button>
+                        </div>
+                        <div class="version-row">
+                            <span>{move || format!(
+                                "Launcher {}",
+                                version_info.get().map(|info| info.launcher_version).unwrap_or_else(|| "—".to_string())
+                            )}</span>
+                            <span>{move || {
+                                let info = version_info.get();
+                                let version = info
+                                    .as_ref()
+                                    .map(|info| info.rustfs_version.as_str())
+                                    .unwrap_or("—");
+                                let source = info
+                                    .as_ref()
+                                    .map(|info| rustfs_source_label(info.rustfs_managed))
+                                    .unwrap_or("bundled");
+                                format!("RustFS {version} ({source})")
+                            }}</span>
+                        </div>
+                        {move || update_info.get().map(|info| {
+                            if info.available {
+                                let version = info.version.unwrap_or_else(|| "unknown".to_string());
+                                let notes = info.notes.unwrap_or_else(|| "No release notes for this version.".to_string());
+                                view! {
+                                    <div class="update-available">
+                                        <div>
+                                            <strong>{format!("Launcher {}", version)}</strong>
+                                            <p>{notes}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class=control_class(ControlWeight::Outline)
+                                            disabled=updates_busy
+                                            on:click=install_update
+                                        >
+                                            {move || if is_installing_update.get() { "Installing…" } else { "Update Launcher" }}
+                                        </button>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <p class="update-current">"Launcher is up to date."</p> }.into_any()
+                            }
+                        })}
+                        {move || rustfs_update_info.get().map(|info| {
+                            if info.available {
+                                let version = info.latest_version.unwrap_or_else(|| "unknown".to_string());
+                                let detail = match (info.release_type, info.asset_name) {
+                                    (Some(kind), Some(asset)) => format!("{kind} · {asset}"),
+                                    (Some(kind), None) => kind,
+                                    (None, Some(asset)) => asset,
+                                    (None, None) => "Verified download from the RustFS release feed.".to_string(),
+                                };
+                                view! {
+                                    <div class="update-available">
+                                        <div>
+                                            <strong>{format!("RustFS {}", version)}</strong>
+                                            <p>{detail}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class=control_class(ControlWeight::Outline)
+                                            disabled=updates_busy
+                                            on:click=install_rustfs_update
+                                        >
+                                            {move || if is_installing_rustfs.get() { "Installing…" } else { "Update RustFS" }}
+                                        </button>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <p class="update-current">{rustfs_idle_message(info.notes.as_deref())}</p> }.into_any()
+                            }
+                        })}
+                        {move || is_installing_update.get().then(|| view! {
+                            <div class="update-progress" aria-label="Launcher update progress">
+                                <div
+                                    class="update-progress-bar"
+                                    style:width=move || format!("{}%", update_progress.get().unwrap_or(8))
+                                ></div>
+                            </div>
+                        })}
+                        {move || is_installing_rustfs.get().then(|| view! {
+                            <div class="update-progress" aria-label="RustFS update progress">
+                                <div
+                                    class="update-progress-bar"
+                                    style:width=move || format!("{}%", rustfs_update_progress.get().unwrap_or(8))
+                                ></div>
+                            </div>
+                        })}
+                    </div>
+                </div>
+            </Show>
+
+            <Show when=move || screen().logs_visible>
                 <div
                     id="logs-panel"
                     class="logs-section"
