@@ -73,7 +73,7 @@ pub fn LogViewer(
                     </button>
                 </div>
             </div>
-            <div class="log-output" node_ref=logs_ref>
+            <div class="log-output" dir="ltr" node_ref=logs_ref>
                 <For
                     each=move || {
                         match current_log_type.get() {
