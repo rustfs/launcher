@@ -24,25 +24,58 @@ de configuration à modifier.
 
 Prenez le fichier qui correspond à votre machine sur la
 [page des versions](https://github.com/rustfs/launcher/releases).
+La version **1.0.6** est la dernière version publiée.
 
 | Votre système | Fichier |
 | --- | --- |
-| Windows 10 / 11, 64 bits | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (environ 50 Mo) |
-| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS, Intel | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11, 64 bits | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.dmg` et `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS, Intel (x86_64) | Absent de la version 1.0.6 |
 
-Windows sur ARM fonctionne aussi : la version x86_64 s'exécute par émulation. Il n'y a pas encore de paquet
-Linux ; sous Linux, lancez directement le [binaire RustFS](https://github.com/rustfs/rustfs/releases).
+Pour 1.0.6, les fichiers sont `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg` et `rustfs-launcher-macos-aarch64-1.0.6.app.zip`. Il n'y a pas de
+paquet `rustfs-launcher-macos-x86_64-*` : un Mac Intel ne peut pas installer cette version.
+
+Windows sur ARM fonctionne aussi : la version x86_64 s'exécute par émulation. Il n'y a pas de paquet Linux du
+launcher ; sous Linux, lancez directement le [binaire RustFS](https://github.com/rustfs/rustfs/releases).
 
 Les fichiers sont volumineux parce qu'un serveur RustFS complet est embarqué dans l'installeur.
+
+Les noms qui contiennent `-latest` sur cette même version sont des copies identiques des installeurs versionnés.
+`rustfs-launcher-windows-x86_64-latest-setup.exe` et `rustfs-launcher-windows-x86_64-latest.exe` sont cet
+installeur Windows sous des noms stables. Les fichiers macOS `-latest.dmg` et `-latest.app.zip` sont le même
+genre de copie. Préférez le `-setup.exe` ou le `.dmg` qui portent le numéro de version.
+
+### Vérifier le téléchargement
+
+Sur la même page de version, dans **Assets**, téléchargez `SHA256SUMS` à côté de l'installeur. Chaque ligne
+contient un condensé SHA-256 et le nom du fichier.
+
+Sous Windows, dans PowerShell, depuis le dossier de l'installeur :
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+Sous macOS, dans le Terminal :
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+Le condensé doit correspondre à la ligne de ce nom de fichier exact dans `SHA256SUMS`. La casse des lettres n'a
+pas d'importance. Si vous avez téléchargé le `.app.zip`, vérifiez ce nom de fichier de la même façon. Pour une
+version plus récente, utilisez les noms de fichiers et le `SHA256SUMS` de cette version.
 
 ## Windows, étape par étape
 
 ### 1. Télécharger l'installeur
 
 Ouvrez la [page des versions](https://github.com/rustfs/launcher/releases), dépliez **Assets** sur la version la
-plus récente et cliquez sur le fichier qui se termine par `-setup.exe`. Edge et Chrome signalent parfois les
-installeurs qu'ils voient rarement ; choisissez **Conserver** si le navigateur le demande.
+plus récente et téléchargez `rustfs-launcher-windows-x86_64-<version>-setup.exe` (pour 1.0.6,
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`). Comparez-le à `SHA256SUMS` comme indiqué plus haut. Edge et
+Chrome signalent parfois les installeurs qu'ils voient rarement ; choisissez **Conserver** si le navigateur le
+demande.
 
 ### 2. Passer SmartScreen
 
@@ -136,9 +169,10 @@ vous-même si vous n'en avez plus besoin.
 
 ## macOS
 
-1. Décompressez le `.app.zip` et glissez **RustFS Launcher** dans **Applications**.
-2. Le premier lancement est bloqué, car les versions publiées ne sont pas notariées par Apple. Faites un clic
-   droit sur l'application et choisissez **Ouvrir**, ou retirez l'attribut de quarantaine dans un terminal :
+1. Ouvrez le `.dmg` et glissez **RustFS Launcher** dans **Applications**. Si vous avez téléchargé le `.app.zip`,
+   décompressez-le et glissez l'application de la même façon.
+2. Le premier lancement est bloqué, car ces builds ne sont pas notariés. Faites un clic droit sur l'application,
+   choisissez **Ouvrir**, puis confirmez. Retirer l'attribut de quarantaine dans le Terminal est facultatif :
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -154,6 +188,24 @@ vous-même si vous n'en avez plus besoin.
 
 Le premier écran montre **Data Path**, **Browse** et **Launch RustFS**, avec l'état du service à côté du titre.
 Les journaux n'apparaissent pas tant que vous ne les ouvrez pas.
+
+### Langue
+
+Utilisez les boutons de langue (**中** / **EN** / **FR** / **日**) dans la barre supérieure pour changer la
+langue de l'interface.
+
+Au premier lancement, tant que vous n'avez pas choisi de langue, l'application suit la langue du système (selon
+la sous-balise principale, par exemple `zh-CN`, `zh-Hant-TW`, `fr-CA` ou `ja_JP`). Si elle fait partie des
+4 langues intégrées, elle est utilisée ; sinon l'interface est en anglais.
+
+Les 4 langues intégrées sont 简体中文 (`zh-CN`), English (`en`), Français (`fr`) et 日本語 (`ja`).
+
+Dès que vous choisissez une langue, elle s'applique tout de suite et elle est mémorisée. La langue du système ne
+la remplace plus ensuite.
+
+Le menu de la zone de notification (**Show** et **Quit**), l'assistant d'installation Windows, les messages
+d'erreur du backend et les lignes de journal restent en anglais. Le paquet macOS est une image disque à glisser
+dans Applications, pas un assistant traduit. Les boutons de langue changent la fenêtre du launcher.
 
 **Les badges d'état.** Le premier parle du serveur : *Service Online* signifie que quelque chose répond sur
 l'hôte et le port configurés. Le second dit à qui appartient ce processus :
@@ -216,8 +268,8 @@ client S3.
 **La fenêtre a disparu** — la fermer ne fait que la masquer. Utilisez l'icône de la zone de notification sous
 Windows, ou celle du Dock sous macOS.
 
-**macOS dit que l'application « ne peut pas être ouverte »** — voyez la commande de quarantaine dans la section
-macOS.
+**macOS dit que l'application « ne peut pas être ouverte »** — faites un clic droit sur l'application, choisissez
+**Ouvrir**, puis confirmez. La commande `xattr` de la section macOS est une alternative facultative.
 
 ## Compiler soi-même
 

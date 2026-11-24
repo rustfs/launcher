@@ -21,25 +21,56 @@ RustFS Launcher는 S3 호환 오브젝트 스토리지 서버인 [RustFS](https:
 ## 내려받기
 
 [릴리스 페이지](https://github.com/rustfs/launcher/releases)에서 사용 중인 환경에 맞는 파일을 받으세요.
+현재 최신 릴리스는 **1.0.6**입니다.
 
 | 사용 환경 | 파일 |
 | --- | --- |
-| Windows 10 / 11 (64비트) | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (약 50 MB) |
-| macOS (Apple Silicon) | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS (Intel) | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11 (64비트) | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS (Apple Silicon) | `rustfs-launcher-macos-aarch64-<version>.dmg` 및 `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS (Intel, x86_64) | 릴리스 1.0.6에는 없습니다 |
 
-Windows on ARM에서도 동작합니다. x86_64 빌드가 에뮬레이션으로 실행됩니다. 리눅스 패키지는 아직 없으며,
+1.0.6의 파일 이름은 `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg`, `rustfs-launcher-macos-aarch64-1.0.6.app.zip`입니다.
+`rustfs-launcher-macos-x86_64-*` 패키지는 없으므로 Intel Mac에서는 이 릴리스를 설치할 수 없습니다.
+
+Windows on ARM에서도 동작합니다. x86_64 빌드가 에뮬레이션으로 실행됩니다. 리눅스용 런처 패키지는 없으며,
 리눅스에서는 [RustFS 바이너리](https://github.com/rustfs/rustfs/releases)를 직접 실행하면 됩니다.
 
 파일 용량이 큰 이유는 RustFS 서버 전체가 설치 파일에 들어 있기 때문입니다.
+
+같은 릴리스에서 이름에 `-latest`가 들어간 파일은 버전 번호가 붙은 설치 파일과 바이트 단위로 같은 복사본입니다.
+`rustfs-launcher-windows-x86_64-latest-setup.exe`와 `rustfs-launcher-windows-x86_64-latest.exe`는 그 Windows
+설치 파일을 고정된 이름으로 둔 것입니다. macOS의 `-latest.dmg`와 `-latest.app.zip`도 같은 종류의 복사본입니다.
+버전 번호가 붙은 `-setup.exe` 또는 `.dmg`를 받으세요.
+
+### 내려받은 파일 확인
+
+같은 릴리스 페이지의 **Assets**에서 설치 파일과 함께 `SHA256SUMS`를 받으세요. 각 줄은 SHA-256 해시와 파일 이름입니다.
+
+Windows에서는 설치 파일이 있는 폴더에서 PowerShell을 엽니다.
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+macOS에서는 터미널에서 실행합니다.
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+해시는 `SHA256SUMS`에서 그 파일 이름 줄과 같아야 합니다. 영문 대소문자는 구분하지 않습니다. `.app.zip`을
+받았다면 그 파일 이름으로 같은 방식으로 확인하세요. 이후 릴리스에서는 그 릴리스의 파일 이름과 `SHA256SUMS`를
+사용하세요.
 
 ## Windows, 하나씩 따라 하기
 
 ### 1. 설치 파일 내려받기
 
 [릴리스 페이지](https://github.com/rustfs/launcher/releases)를 열고 최신 릴리스의 **Assets**를 펼친 뒤
-`-setup.exe`로 끝나는 파일을 클릭합니다. Edge나 Chrome은 흔치 않은 설치 파일에 경고를 띄우기도 합니다.
-물어보면 **유지**를 선택하세요.
+`rustfs-launcher-windows-x86_64-<version>-setup.exe`를 받습니다(1.0.6은
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`). 위에서 설명한 대로 `SHA256SUMS`와 비교하세요. Edge나
+Chrome은 흔치 않은 설치 파일에 경고를 띄우기도 합니다. 물어보면 **유지**를 선택하세요.
 
 ### 2. SmartScreen 넘어가기
 
@@ -126,9 +157,10 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ## macOS
 
-1. `.app.zip`의 압축을 풀고 **RustFS Launcher**를 **응용 프로그램**으로 끌어다 놓습니다.
-2. 배포 빌드가 Apple 공증을 받지 않아 첫 실행은 차단됩니다. 앱을 오른쪽 클릭해 **열기**를 고르거나,
-   터미널에서 격리 속성을 지우세요.
+1. `.dmg`를 열고 **RustFS Launcher**를 **응용 프로그램**으로 끌어다 놓습니다. `.app.zip`을 받았다면 압축을
+   풀고 같은 방식으로 옮기세요.
+2. 이 빌드는 공증되지 않아 첫 실행이 차단됩니다. 앱을 오른쪽 클릭하고 **열기**를 선택한 뒤 확인하세요.
+   터미널에서 격리 속성을 지우는 것은 선택 사항입니다.
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -143,6 +175,24 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 첫 화면은 **Data Path**, **Browse**, **Launch RustFS**이고, 제목 옆에 서비스 상태가 있습니다.
 로그는 열기 전까지 보이지 않습니다.
+
+### 언어
+
+상단 바의 언어 버튼(**中** / **EN** / **FR** / **日**)으로 화면 언어를 바꿀 수 있습니다.
+
+아직 언어를 고르지 않은 첫 실행에서는 운영 체제 언어를 따릅니다(`zh-CN`, `zh-Hant-TW`, `fr-CA`, `ja_JP`
+등 기본 언어 태그 기준). 그 언어가 앱에 들어 있는 4개 언어 중 하나이면 그 언어를 쓰고, 아니면 영어를 씁니다.
+
+앱 내 4개 언어는 简体中文(`zh-CN`), English(`en`), Français(`fr`), 日本語(`ja`)입니다.
+
+언어를 고르면 바로 적용되고 기억됩니다. 그 뒤에는 운영 체제 언어가 이 선택을 바꾸지 않습니다.
+
+한국어는 현재 앱 내 언어 선택에 포함되어 있지 않습니다. 언어를 직접 고르지 않으면 위 규칙에 따라 시스템 언어가
+지원되는 4개 언어 중 하나일 때만 해당 언어를 쓰고, 그렇지 않으면 영어를 씁니다.
+
+트레이 메뉴(**Show**, **Quit**), Windows 설치 마법사, 백엔드 오류 메시지 및 로그 내용은 영어입니다. macOS
+파일은 응용 프로그램으로 끌어 놓는 디스크 이미지이며, 번역된 설치 마법사가 아닙니다. 언어 버튼은 런처 창의 언어를
+바꿉니다.
 
 **상태 배지.** 첫 번째는 서버 상태입니다. *Service Online*은 설정한 호스트와 포트에서 무언가 응답하고 있다는
 뜻입니다. 두 번째는 그 프로세스의 주인이 누구인지 알려 줍니다.
@@ -199,7 +249,7 @@ Version & Updates 카드에서 **Check for Updates**를 누르세요. 새 릴리
 **창이 사라짐** — 닫아도 숨겨질 뿐입니다. Windows에서는 알림 영역 아이콘, macOS에서는 Dock 아이콘을
 사용하세요.
 
-**macOS에서 앱을 "열 수 없습니다"라고 함** — 위 macOS 항목의 격리 속성 명령을 실행하세요.
+**macOS에서 앱을 "열 수 없습니다"라고 함** — 앱을 오른쪽 클릭하고 **열기**를 선택한 뒤 확인하세요. macOS 항목의 `xattr` 명령은 선택적 대안입니다.
 
 ## 직접 빌드하기
 

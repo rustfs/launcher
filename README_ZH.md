@@ -19,25 +19,55 @@ RustFS Launcher 是一个小巧的桌面程序，用来在自己的电脑上运�
 
 ## 下载
 
-到[发布页](https://github.com/rustfs/launcher/releases)挑选适合自己系统的文件。
+到[发布页](https://github.com/rustfs/launcher/releases)挑选适合自己系统的文件。当前最新版本是 **1.0.6**。
 
 | 你的系统 | 文件 |
 | --- | --- |
-| Windows 10 / 11（64 位） | `rustfs-launcher-windows-x86_64-<version>-setup.exe`（约 50 MB） |
-| macOS（Apple 芯片） | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS（Intel） | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11（64 位） | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS（Apple 芯片） | `rustfs-launcher-macos-aarch64-<version>.dmg` 和 `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS（Intel，x86_64） | 1.0.6 未发布 |
 
-ARM 版 Windows 也能用，它会以模拟方式运行 x86_64 版本。Linux 目前还没有安装包，可以直接运行
+1.0.6 的实际文件名是 `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`、
+`rustfs-launcher-macos-aarch64-1.0.6.dmg` 和 `rustfs-launcher-macos-aarch64-1.0.6.app.zip`。这一版没有
+`rustfs-launcher-macos-x86_64-*`，Intel 芯片的 Mac 装不了这个版本。
+
+ARM 版 Windows 也能用，它会以模拟方式运行 x86_64 版本。Linux 没有启动器安装包，请直接运行
 [RustFS 二进制文件](https://github.com/rustfs/rustfs/releases)。
 
 安装包比较大，是因为整个 RustFS 服务端都打包在里面。
+
+同一发布页里文件名带 `-latest` 的，是上述带版本号安装包的逐字节副本。
+`rustfs-launcher-windows-x86_64-latest-setup.exe` 和 `rustfs-launcher-windows-x86_64-latest.exe` 都是这个
+Windows 安装包，只是用了固定文件名。macOS 的 `-latest.dmg` 和 `-latest.app.zip` 也是同样的副本。优先下载带版本号的
+`-setup.exe` 或 `.dmg`。
+
+### 核对下载文件
+
+在同一个发布页的 **Assets** 里，和安装包一起下载 `SHA256SUMS`。每一行是 SHA-256 散列值和文件名。
+
+在 Windows 上，用 PowerShell 进入安装包所在的文件夹：
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+在 macOS 上，用终端：
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+算出的散列值必须和 `SHA256SUMS` 里该文件名那一行一致，字母大小写无所谓。如果下的是 `.app.zip`，就按那个文件名同样核对。
+以后安装更新的版本时，用该版本发布页上的文件名和 `SHA256SUMS`。
 
 ## Windows 完整流程
 
 ### 1. 下载安装包
 
-打开[发布页](https://github.com/rustfs/launcher/releases)，展开最新版本下的 **Assets**，点击以 `-setup.exe`
-结尾的文件。Edge 和 Chrome 有时会对不常见的安装包给出提示，出现时选择「保留」即可。
+打开[发布页](https://github.com/rustfs/launcher/releases)，展开最新版本下的 **Assets**，下载
+`rustfs-launcher-windows-x86_64-<version>-setup.exe`（1.0.6 为
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`）。按上面的方法用 `SHA256SUMS` 核对。Edge 和 Chrome
+有时会对不常见的安装包给出提示，出现时选择「保留」即可。
 
 ### 2. 通过 SmartScreen
 
@@ -117,8 +147,8 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ## macOS
 
-1. 解压 `.app.zip`，把 **RustFS Launcher** 拖进 **应用程序**。
-2. 由于发布版本没有经过 Apple 公证，首次打开会被拦下。可以右键点击程序选择 **打开**，或在终端里去掉隔离属性：
+1. 打开 `.dmg`，把 **RustFS Launcher** 拖进 **应用程序**。如果下的是 `.app.zip`，解压后同样拖进去。
+2. 这些构建没有经过 Apple 公证，所以首次打开会被拦下。请右键点击程序，选择 **打开**，再确认。在终端里去掉隔离属性只是可选办法：
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -132,6 +162,20 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 ![尚未启动时的界面](docs/images/launcher-ready.png)
 
 首屏是 **Data Path**、**Browse** 和 **Launch RustFS**，标题旁边是服务状态。日志在你打开之前不会出现。
+
+### 语言
+
+点击顶栏的语言按钮（**中** / **EN** / **FR** / **日**）即可切换界面语言。
+
+第一次打开、尚未选择语言时，界面跟随操作系统语言（按主语言标签匹配，如 `zh-CN`、`zh-Hant-TW`、`fr-CA`、
+`ja_JP`）：如果属于应用内置的 4 种语言之一就使用它，否则使用英语。
+
+应用内置的 4 种语言是 简体中文（`zh-CN`）、English（`en`）、Français（`fr`）和 日本語（`ja`）。
+
+选定之后立即生效并会被记住，之后操作系统语言不会再覆盖这个选择。
+
+托盘菜单（**Show** 和 **Quit**）、Windows 安装向导、后端返回的错误信息和日志内容仍是英语。macOS 的下载是
+磁盘映像，拖进“应用程序”即可，并不是已翻译的安装向导。语言按钮只改变启动器窗口里的语言。
 
 **状态标签。** 第一个说的是服务本身：*Service Online* 表示配置的主机和端口上确实有程序在响应。第二个说的是
 这个进程归谁管：
@@ -191,7 +235,7 @@ Version & Updates 卡片负责 **两类互相独立的升级**，都通过 **Che
 
 **窗口不见了** —— 关闭窗口只是把它隐藏起来。Windows 上用通知区域的图标，macOS 上点 Dock 图标即可。
 
-**macOS 提示“无法打开”** —— 参见上面 macOS 部分的隔离属性命令。
+**macOS 提示“无法打开”** —— 右键点击程序，选择 **打开**，再确认。上面 macOS 部分里的 `xattr` 命令只是可选办法。
 
 ## 自己编译
 
