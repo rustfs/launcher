@@ -1,3 +1,4 @@
+use crate::i18n::{ActionLabel, Strings};
 use crate::types::{DEFAULT_ACCESS_KEY, DEFAULT_HOST, DEFAULT_SECRET_KEY};
 use std::net::IpAddr;
 
@@ -47,23 +48,9 @@ pub fn refuses_public_default_credentials(
             || credential_is_published_default(secret_key, DEFAULT_SECRET_KEY))
 }
 
-pub fn public_default_credentials_message(host: &str) -> String {
-    format!(
-        "Refusing to expose the default rustfsadmin credentials on {host}. Bind to 127.0.0.1, or set a unique access key and secret key. Empty credentials also fall back to rustfsadmin"
-    )
-}
-
-pub fn rustfs_source_label(managed: bool) -> &'static str {
-    if managed {
-        "installed"
-    } else {
-        "bundled"
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrimaryAction {
-    pub label: &'static str,
+    pub label: ActionLabel,
     pub disabled: bool,
     pub lock_form: bool,
     pub stops_service: bool,
@@ -76,11 +63,11 @@ pub struct PrimaryAction {
 pub fn primary_action(can_stop: bool, busy: bool, data_path_empty: bool) -> PrimaryAction {
     PrimaryAction {
         label: if busy && !can_stop {
-            "Launching…"
+            ActionLabel::Launching
         } else if can_stop {
-            "Stop RustFS"
+            ActionLabel::Stop
         } else {
-            "Launch RustFS"
+            ActionLabel::Launch
         },
         disabled: busy || data_path_empty,
         lock_form: can_stop || busy,
@@ -88,11 +75,11 @@ pub fn primary_action(can_stop: bool, busy: bool, data_path_empty: bool) -> Prim
     }
 }
 
-pub fn rustfs_idle_message(notes: Option<&str>) -> String {
+pub fn rustfs_idle_message(notes: Option<&str>, up_to_date: &str) -> String {
     notes
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("RustFS is up to date.")
+        .unwrap_or(up_to_date)
         .to_string()
 }
 
@@ -131,15 +118,19 @@ pub struct OperationFailure {
 
 /// Turns a start, stop, upgrade, or update-check error into first-screen copy.
 /// The log panel stays closed; "See App Logs for details" is never the only text.
-pub fn operation_failure(kind: OperationKind, raw: &str) -> OperationFailure {
+///
+/// `raw` is matched in English (backend errors and the launcher's own failure
+/// notes are English); reasons and fixes the launcher writes itself come from `t`.
+/// A sentence taken from a backend error is shown as received.
+pub fn operation_failure(kind: OperationKind, raw: &str, t: &Strings) -> OperationFailure {
     let message = peel_operation_message(raw);
     if message.is_empty() {
         return OperationFailure {
-            reason: default_reason(kind),
-            fix: default_fix(kind),
+            reason: default_reason(kind, t),
+            fix: default_fix(kind, t),
         };
     }
-    if let Some(failure) = match_known_failure(kind, &message) {
+    if let Some(failure) = match_known_failure(kind, &message, t) {
         return failure;
     }
     if let Some((reason, fix)) = split_instruction(&message) {
@@ -147,34 +138,28 @@ pub fn operation_failure(kind: OperationKind, raw: &str) -> OperationFailure {
     }
     OperationFailure {
         reason: ensure_sentence(&message),
-        fix: default_fix(kind),
+        fix: default_fix(kind, t),
     }
 }
 
-fn default_reason(kind: OperationKind) -> String {
+fn default_reason(kind: OperationKind, t: &Strings) -> String {
     match kind {
-        OperationKind::Launch => "RustFS did not start.".to_string(),
-        OperationKind::Stop => "RustFS did not stop.".to_string(),
-        OperationKind::Upgrade => "The update did not finish.".to_string(),
-        OperationKind::Check => "The update check did not finish.".to_string(),
+        OperationKind::Launch => t.reason_launch_default,
+        OperationKind::Stop => t.reason_stop_default,
+        OperationKind::Upgrade => t.reason_upgrade_default,
+        OperationKind::Check => t.reason_check_default,
     }
+    .to_string()
 }
 
-fn default_fix(kind: OperationKind) -> String {
+fn default_fix(kind: OperationKind, t: &Strings) -> String {
     match kind {
-        OperationKind::Launch => {
-            "Check the data path and ports, then launch again.".to_string()
-        }
-        OperationKind::Stop => {
-            "Press Stop RustFS again. If the service is still running, quit the launcher from the tray menu.".to_string()
-        }
-        OperationKind::Upgrade => {
-            "Try the update again. A failed update leaves the installed build unchanged.".to_string()
-        }
-        OperationKind::Check => {
-            "Check the network connection, then press Check for Updates again.".to_string()
-        }
+        OperationKind::Launch => t.fix_launch_default,
+        OperationKind::Stop => t.fix_stop_default,
+        OperationKind::Upgrade => t.fix_upgrade_default,
+        OperationKind::Check => t.fix_check_default,
     }
+    .to_string()
 }
 
 fn peel_operation_message(raw: &str) -> String {
@@ -246,7 +231,11 @@ fn split_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
-fn match_known_failure(kind: OperationKind, message: &str) -> Option<OperationFailure> {
+fn match_known_failure(
+    kind: OperationKind,
+    message: &str,
+    t: &Strings,
+) -> Option<OperationFailure> {
     let lower = message.to_lowercase();
     let failure = |reason: String, fix: &str| OperationFailure {
         reason,
@@ -255,106 +244,70 @@ fn match_known_failure(kind: OperationKind, message: &str) -> Option<OperationFa
 
     if lower.contains("data path is required") {
         return Some(failure(
-            "Data path is required.".into(),
-            "Choose a folder with Browse, or type the path, then launch again.",
+            t.data_path_required.into(),
+            t.fix_choose_data_folder,
         ));
     }
     if lower.contains("data path does not exist") {
-        return Some(failure(
-            first_sentence(message),
-            "Create this folder, then launch again. The launcher does not create it for you.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_create_folder));
     }
     if lower.contains("not a directory") {
-        return Some(failure(
-            first_sentence(message),
-            "Choose a folder, not a file, then launch again.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_folder_not_file));
     }
     if lower.contains("invalid data path") {
-        return Some(failure(
-            first_sentence(message),
-            "Pick a local folder with Browse, then launch again.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_pick_local_folder));
     }
     if lower.contains("log directory") {
-        return Some(failure(
-            first_sentence(message),
-            "Choose a data folder whose parent directory is writable, then launch again.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_writable_parent));
     }
     if lower.contains("already in use") {
-        return Some(failure(
-            first_sentence(message),
-            "Choose a different port, or stop the program that is listening on it, then launch again.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_port_in_use));
     }
     if lower.contains("must be different") {
-        return Some(failure(
-            "API port and console port must be different.".into(),
-            "Set a different API port and console port, then launch again.",
-        ));
+        return Some(failure(t.port_conflict.into(), t.fix_different_ports));
     }
     if lower.contains("must be a number between 1 and 65535") {
-        return Some(failure(
-            first_sentence(message),
-            "Enter a whole number from 1 to 65535, then launch again.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_port_number));
     }
     if lower.contains("invalid bind host") || lower.contains("invalid host") {
-        return Some(failure(
-            first_sentence(message),
-            "Use 127.0.0.1, localhost, or an IP address such as 0.0.0.0, then launch again.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_bind_host));
     }
     if lower.contains("rustfsadmin") || (lower.contains("credential") && lower.contains("default"))
     {
-        return Some(failure(
-            first_sentence(message),
-            "Bind to 127.0.0.1, or set a unique access key and secret key. Empty credentials also fall back to rustfsadmin.",
-        ));
+        return Some(failure(first_sentence(message), t.fix_public_credentials));
     }
     if lower.contains("already running") {
         return Some(failure(
-            "RustFS is already running.".into(),
-            "Press Stop RustFS if this launcher started it. Otherwise change the port, or stop the other program, then launch again.",
+            t.reason_already_running.into(),
+            t.fix_already_running,
         ));
     }
     if lower.contains("binary not found") {
-        return Some(failure(
-            ensure_sentence(message),
-            "Reinstall RustFS Launcher, or install the RustFS build from Check for Updates, then launch again.",
-        ));
+        return Some(failure(ensure_sentence(message), t.fix_binary_not_found));
     }
     if lower.contains("failed to execute") {
-        return Some(failure(
-            ensure_sentence(message),
-            "Reinstall RustFS Launcher so the bundled binary is restored, then launch again.",
-        ));
+        return Some(failure(ensure_sentence(message), t.fix_binary_exec));
     }
     if lower.contains("exit code") || lower.contains("exited with code") {
         // A RustFS update smoke-test (`--version`) can also exit non-zero. That
         // check does not use the data folder or the service port.
         let fix = match kind {
-            OperationKind::Launch => "Confirm the data folder exists and the port is free, then launch again. RustFS writes more detail in the logs folder next to the data directory.",
-            OperationKind::Upgrade | OperationKind::Check => "Try the update again. A failed update leaves the installed build unchanged.",
+            OperationKind::Launch => t.fix_launch_exit,
+            OperationKind::Upgrade | OperationKind::Check => t.fix_upgrade_default,
             OperationKind::Stop => {
-                return Some(failure(ensure_sentence(message), &default_fix(kind)))
+                return Some(failure(ensure_sentence(message), &default_fix(kind, t)))
             }
         };
         return Some(failure(ensure_sentence(message), fix));
     }
     if lower.contains("checksum mismatch") {
-        return Some(failure(
-            ensure_sentence(message),
-            "Run the RustFS update again. The current install was left unchanged.",
-        ));
+        return Some(failure(ensure_sentence(message), t.fix_retry_rustfs_update));
     }
     if lower.contains("network request failed") || lower.contains("timed out") {
         let fix = if matches!(kind, OperationKind::Launch | OperationKind::Stop) {
-            default_fix(kind)
+            default_fix(kind, t)
         } else {
-            "Check the network connection, then try again. A failed update leaves the installed build unchanged.".to_string()
+            t.fix_network_update.to_string()
         };
         return Some(OperationFailure {
             reason: ensure_sentence(message),
@@ -362,31 +315,22 @@ fn match_known_failure(kind: OperationKind, message: &str) -> Option<OperationFa
         });
     }
     if lower.contains("no update is available") {
-        return Some(failure(
-            "No update is available.".into(),
-            "This launcher is already current. Launch RustFS with the installed build.",
-        ));
+        return Some(failure(t.reason_no_update.into(), t.fix_no_update));
     }
     if lower.contains("asset not found") || lower.contains("release asset") {
-        return Some(failure(
-            ensure_sentence(message),
-            "Try again later. The installed build is unchanged.",
-        ));
+        return Some(failure(ensure_sentence(message), t.fix_asset_missing));
     }
     if lower.contains("not runnable")
         || lower.contains("archive did not contain")
         || lower.contains("could not open the archive")
         || lower.contains("could not read the archive")
     {
-        return Some(failure(
-            ensure_sentence(message),
-            "Run the RustFS update again. The current install was left unchanged.",
-        ));
+        return Some(failure(ensure_sentence(message), t.fix_retry_rustfs_update));
     }
     if lower.contains("not running in tauri") {
         return Some(failure(
-            "The window is not connected to the desktop shell.".into(),
-            "Open RustFS Launcher from the Start menu or the Applications folder, then launch again.",
+            t.reason_not_connected.into(),
+            t.fix_open_from_shell,
         ));
     }
     if lower.contains("launch command failed")
@@ -395,8 +339,8 @@ fn match_known_failure(kind: OperationKind, message: &str) -> Option<OperationFa
         || lower.contains("could not read")
     {
         return Some(failure(
-            "The launcher could not read the result of the action.".into(),
-            &default_fix(kind),
+            t.reason_unreadable_result.into(),
+            &default_fix(kind, t),
         ));
     }
     None
@@ -460,9 +404,10 @@ fn ensure_sentence(text: &str) -> String {
 mod tests {
     use super::{
         display_host, operation_failure, primary_action, progress_percent,
-        public_default_credentials_message, refuses_public_default_credentials,
-        rustfs_idle_message, rustfs_source_label, status_poll_is_current, OperationKind,
+        refuses_public_default_credentials, rustfs_idle_message, status_poll_is_current,
+        OperationKind,
     };
+    use crate::i18n::{ActionLabel, Lang, EN};
 
     #[test]
     fn display_host_rewrites_wildcards_and_wraps_ipv6() {
@@ -478,37 +423,38 @@ mod tests {
     }
 
     #[test]
-    fn rustfs_labels_describe_the_binary_in_use() {
-        assert_eq!(rustfs_source_label(true), "installed");
-        assert_eq!(rustfs_source_label(false), "bundled");
+    fn rustfs_idle_message_prefers_backend_notes() {
         assert_eq!(
-            rustfs_idle_message(Some("RustFS 1.0.0-rc.4 has no macOS (Intel) build.")),
+            rustfs_idle_message(
+                Some("RustFS 1.0.0-rc.4 has no macOS (Intel) build."),
+                "up to date"
+            ),
             "RustFS 1.0.0-rc.4 has no macOS (Intel) build."
         );
-        assert_eq!(rustfs_idle_message(Some("  ")), "RustFS is up to date.");
-        assert_eq!(rustfs_idle_message(None), "RustFS is up to date.");
+        assert_eq!(rustfs_idle_message(Some("  "), "up to date"), "up to date");
+        assert_eq!(rustfs_idle_message(None, "up to date"), "up to date");
     }
 
     #[test]
     fn a_second_click_cannot_stop_a_launch_that_has_not_finished() {
         let launching = primary_action(false, true, false);
-        assert_eq!(launching.label, "Launching…");
+        assert_eq!(launching.label, ActionLabel::Launching);
         assert!(launching.disabled);
         assert!(launching.lock_form);
         assert!(!launching.stops_service);
 
         let stopping = primary_action(true, true, false);
-        assert_eq!(stopping.label, "Stop RustFS");
+        assert_eq!(stopping.label, ActionLabel::Stop);
         assert!(stopping.disabled);
         assert!(!stopping.stops_service);
 
         let running = primary_action(true, false, false);
-        assert_eq!(running.label, "Stop RustFS");
+        assert_eq!(running.label, ActionLabel::Stop);
         assert!(!running.disabled);
         assert!(running.stops_service);
 
         let idle = primary_action(false, false, true);
-        assert_eq!(idle.label, "Launch RustFS");
+        assert_eq!(idle.label, ActionLabel::Launch);
         assert!(idle.disabled);
         assert!(!idle.lock_form);
     }
@@ -556,13 +502,10 @@ mod tests {
             Some("ak-unique"),
             Some("sk-unique"),
         ));
-        let message = public_default_credentials_message("0.0.0.0");
-        assert!(message.contains("0.0.0.0"));
-        assert!(message.contains("unique access key"));
     }
 
     fn rejects_logs_only_copy(kind: OperationKind, raw: &str) {
-        let failure = operation_failure(kind, raw);
+        let failure = operation_failure(kind, raw, &EN);
         let combined = format!("{} {}", failure.reason, failure.fix).to_lowercase();
         assert!(!failure.reason.trim().is_empty(), "{raw}");
         assert!(!failure.fix.trim().is_empty(), "{raw}");
@@ -592,6 +535,7 @@ mod tests {
         let missing = operation_failure(
             OperationKind::Launch,
             "Data path does not exist: D:\\RustFS\\data. Create this folder, then launch again",
+            &EN,
         );
         assert!(missing.reason.contains("D:\\RustFS\\data"));
         assert!(missing.fix.to_lowercase().contains("create this folder"));
@@ -600,11 +544,12 @@ mod tests {
         let port = operation_failure(
             OperationKind::Launch,
             "Port 9000 is already in use. Choose a different port, or stop the program that is listening on it",
+            &EN,
         );
         assert!(port.reason.contains("9000"));
         assert!(port.fix.to_lowercase().contains("different port"));
 
-        let required = operation_failure(OperationKind::Launch, "Data path is required");
+        let required = operation_failure(OperationKind::Launch, "Data path is required", &EN);
         assert!(required.reason.contains("Data path is required"));
         assert!(required.fix.to_lowercase().contains("browse"));
     }
@@ -614,6 +559,7 @@ mod tests {
         let network = operation_failure(
             OperationKind::Upgrade,
             "RustFS update failed: Network request failed: timed out",
+            &EN,
         );
         assert!(network.reason.to_lowercase().contains("timed out"));
         assert!(network.fix.to_lowercase().contains("network"));
@@ -622,13 +568,14 @@ mod tests {
         let checksum = operation_failure(
             OperationKind::Upgrade,
             "Checksum mismatch for rustfs.zip: expected aaa, got bbb",
+            &EN,
         );
         assert!(checksum.reason.contains("aaa"));
         assert!(checksum.reason.contains("bbb"));
         assert!(checksum.fix.to_lowercase().contains("again"));
         assert!(checksum.fix.to_lowercase().contains("unchanged"));
 
-        let exit = operation_failure(OperationKind::Launch, "RustFS exited with code: 1");
+        let exit = operation_failure(OperationKind::Launch, "RustFS exited with code: 1", &EN);
         assert!(exit.reason.contains("1"));
         assert!(exit.fix.to_lowercase().contains("logs folder"));
         rejects_logs_only_copy(OperationKind::Launch, "RustFS exited with code: 1");
@@ -636,10 +583,33 @@ mod tests {
         let smoke = operation_failure(
             OperationKind::Upgrade,
             "RustFS update failed: Downloaded RustFS binary exited with exit code: 1 when asked for its version",
+            &EN,
         );
         assert!(smoke.reason.to_lowercase().contains("exit code"));
         assert!(smoke.fix.to_lowercase().contains("unchanged"));
         assert!(!smoke.fix.to_lowercase().contains("data folder"));
         assert!(!smoke.fix.to_lowercase().contains("port is free"));
+    }
+
+    #[test]
+    fn failure_copy_follows_the_language_but_backend_text_is_kept() {
+        let zh = Lang::Zh.strings();
+        let missing = operation_failure(
+            OperationKind::Launch,
+            "Data path does not exist: D:\\RustFS\\data. Create this folder, then launch again",
+            zh,
+        );
+        assert!(missing.reason.contains("D:\\RustFS\\data"));
+        assert_eq!(missing.fix, zh.fix_create_folder);
+
+        let required = operation_failure(OperationKind::Launch, "Data path is required", zh);
+        assert_eq!(required.reason, zh.data_path_required);
+
+        for lang in Lang::ALL {
+            let t = lang.strings();
+            let failure = operation_failure(OperationKind::Upgrade, "See App Logs for details.", t);
+            assert_eq!(failure.reason, t.reason_upgrade_default);
+            assert_eq!(failure.fix, t.fix_upgrade_default);
+        }
     }
 }
