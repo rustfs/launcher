@@ -2,9 +2,10 @@ use crate::components::config_form::ConfigForm;
 use crate::components::log_viewer::LogViewer;
 use crate::components::toast::{Toast, ToastMessage, ToastType};
 use crate::helpers::{
-    display_host, primary_action, progress_percent, rustfs_idle_message, rustfs_source_label,
-    status_poll_is_current,
+    display_host, operation_failure, primary_action, progress_percent, rustfs_idle_message,
+    status_poll_is_current, OperationKind,
 };
+use crate::i18n::{provide_i18n, Lang};
 use crate::types::{
     AppVersionInfo, CommandResponse, LogEntry, LogType, RuntimeStatus, RustFsConfig,
     RustFsUpdateInfo, UpdateInfo, APP_LOG_CAPACITY, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT,
@@ -260,12 +261,15 @@ fn sync_runtime_status(
 
 #[component]
 pub fn App() -> impl IntoView {
+    let i18n = provide_i18n();
     let (config, set_config) = signal(load_config());
 
     Effect::new(move |_| {
         save_config(&config.get());
     });
 
+    // Dismissal lasts for this session only so the warning returns on restart.
+    let (show_tips, set_show_tips) = signal(true);
     let (toasts, set_toasts) = signal(Vec::<ToastMessage>::new());
     let (is_running, set_is_running) = signal(false);
     let (app_logs, set_app_logs) = signal(VecDeque::<LogEntry>::new());
@@ -282,6 +286,20 @@ pub fn App() -> impl IntoView {
     let (is_installing_rustfs, set_is_installing_rustfs) = signal(false);
     let (update_progress, set_update_progress) = signal(None::<u32>);
     let (rustfs_update_progress, set_rustfs_update_progress) = signal(None::<u32>);
+    // Logs stay closed until the user opens them. Startup, update checks, and
+    // failures must not set this.
+    let (logs_open, set_logs_open) = signal(false);
+    // The failure is kept as the raw message and rendered in the current
+    // language, so an alert already on screen follows a language switch.
+    let (failure_source, set_action_failure) = signal(None::<(OperationKind, String)>);
+    let action_failure = Signal::derive(move || {
+        failure_source
+            .get()
+            .map(|(kind, raw)| operation_failure(kind, &raw, i18n.t()))
+    });
+    let logs_toggle_ref = NodeRef::<leptos::html::Button>::new();
+    let logs_panel_ref = NodeRef::<leptos::html::Div>::new();
+    let workspace_scroll_ref = NodeRef::<leptos::html::Div>::new();
 
     let remove_toast = Callback::new(move |id: u64| {
         set_toasts.update(|current| {
@@ -309,6 +327,60 @@ pub fn App() -> impl IntoView {
             .unchecked_ref(),
             3000,
         );
+    };
+
+    let report_failure = move |kind: OperationKind, raw: String| {
+        let failure = operation_failure(kind, &raw, i18n.t_untracked());
+        set_action_failure.set(Some((kind, raw)));
+        show_toast(
+            format!("{} {}", failure.reason, failure.fix),
+            ToastType::Error,
+        );
+        // The alert lives with Data Path and Launch. An upgrade started from
+        // the card further down the page would otherwise leave that alert
+        // above the current scroll position.
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if let Some(scroller) = workspace_scroll_ref.get_untracked() {
+                    scroller.set_scroll_top(0);
+                }
+            });
+        });
+    };
+
+    let return_focus_to_logs_toggle = move || {
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if let Some(button) = logs_toggle_ref.get_untracked() {
+                    let _ = button.focus();
+                }
+            });
+        });
+    };
+
+    let toggle_logs = move |_| {
+        let next = !logs_open.get_untracked();
+        set_logs_open.set(next);
+        request_animation_frame(move || {
+            request_animation_frame(move || {
+                if next {
+                    if let Some(panel) = logs_panel_ref.get_untracked() {
+                        let _ = panel.focus();
+                    }
+                } else if let Some(button) = logs_toggle_ref.get_untracked() {
+                    let _ = button.focus();
+                }
+            });
+        });
+    };
+
+    let close_logs = move |ev: web_sys::KeyboardEvent| {
+        if ev.key() != "Escape" || !logs_open.get_untracked() {
+            return;
+        }
+        ev.prevent_default();
+        set_logs_open.set(false);
+        return_focus_to_logs_toggle();
     };
 
     Effect::new(move |_| {
@@ -385,9 +457,9 @@ pub fn App() -> impl IntoView {
                     set_service_status.set(false);
                     invalidate_status_polls();
                     sync_runtime_status(config, set_is_running, set_can_stop, set_service_status);
-                    show_toast(
-                        format!("RustFS exited with code: {}", exit_code),
-                        ToastType::Error,
+                    report_failure(
+                        OperationKind::Launch,
+                        format!("RustFS exited with code: {exit_code}"),
                     );
 
                     // Log it
@@ -486,9 +558,13 @@ pub fn App() -> impl IntoView {
         if action_busy.get_untracked() {
             return;
         }
+        set_action_failure.set(None);
         invalidate_status_polls();
         set_action_busy.set(true);
-        show_toast("Launching RustFS...".to_string(), ToastType::Info);
+        show_toast(
+            i18n.t_untracked().launching_rustfs.to_string(),
+            ToastType::Info,
+        );
 
         let now = js_sys::Date::new_0().to_locale_time_string("en-US");
         push_log(
@@ -509,9 +585,9 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             // Check if we're in Tauri environment
             if !is_tauri() {
-                show_toast(
-                    "Error: Not running in Tauri environment".to_string(),
-                    ToastType::Error,
+                report_failure(
+                    OperationKind::Launch,
+                    "Not running in Tauri environment".to_string(),
                 );
                 push_log(
                     set_app_logs,
@@ -549,7 +625,7 @@ pub fn App() -> impl IntoView {
             set_js_field(&validate_args, "config", config_js);
             if let Err(err) = tauri_invoke("validate_config", validate_args.into()).await {
                 let message = js_error_message(err);
-                show_toast(message.clone(), ToastType::Error);
+                report_failure(OperationKind::Launch, message.clone());
                 push_log(
                     set_app_logs,
                     format!("[ERROR] Config validation failed: {message}"),
@@ -584,8 +660,9 @@ pub fn App() -> impl IntoView {
                                 set_is_running.set(true);
                                 set_can_stop.set(true);
                                 set_action_busy.set(false);
+                                set_action_failure.set(None);
                                 show_toast(
-                                    "RustFS launched successfully!".to_string(),
+                                    i18n.t_untracked().launch_succeeded.to_string(),
                                     ToastType::Success,
                                 );
                                 let now = js_sys::Date::new_0().to_locale_time_string("en-US");
@@ -595,7 +672,10 @@ pub fn App() -> impl IntoView {
                                     APP_LOG_CAPACITY,
                                 );
                             } else {
-                                show_toast(format!("Launch failed: {}", message), ToastType::Error);
+                                report_failure(
+                                    OperationKind::Launch,
+                                    format!("Launch failed: {message}"),
+                                );
                                 let now = js_sys::Date::new_0().to_locale_time_string("en-US");
                                 push_log(
                                     set_app_logs,
@@ -609,9 +689,9 @@ pub fn App() -> impl IntoView {
                             settle_runtime();
                         }
                         Err(_) => {
-                            show_toast(
+                            report_failure(
+                                OperationKind::Launch,
                                 "RustFS launch command failed".to_string(),
-                                ToastType::Error,
                             );
                             let now = js_sys::Date::new_0().to_locale_time_string("en-US");
                             push_log(
@@ -628,7 +708,7 @@ pub fn App() -> impl IntoView {
                 }
                 Err(err) => {
                     let message = js_error_message(err);
-                    show_toast(format!("Launch failed: {message}"), ToastType::Error);
+                    report_failure(OperationKind::Launch, format!("Launch failed: {message}"));
                     push_log(
                         set_app_logs,
                         format!("[ERROR] Launch failed: {message}"),
@@ -647,9 +727,13 @@ pub fn App() -> impl IntoView {
         if action_busy.get_untracked() {
             return;
         }
+        set_action_failure.set(None);
         invalidate_status_polls();
         set_action_busy.set(true);
-        show_toast("Stopping RustFS...".to_string(), ToastType::Info);
+        show_toast(
+            i18n.t_untracked().stopping_rustfs.to_string(),
+            ToastType::Info,
+        );
         push_log(
             set_app_logs,
             "Stopping RustFS...".to_string(),
@@ -666,8 +750,12 @@ pub fn App() -> impl IntoView {
                                 set_can_stop.set(false);
                                 set_service_status.set(false);
                                 set_action_busy.set(false);
+                                set_action_failure.set(None);
                                 settle_runtime();
-                                show_toast("RustFS stopped".to_string(), ToastType::Success);
+                                show_toast(
+                                    i18n.t_untracked().rustfs_stopped.to_string(),
+                                    ToastType::Success,
+                                );
                                 push_log(
                                     set_app_logs,
                                     "RustFS stopped successfully".to_string(),
@@ -676,9 +764,9 @@ pub fn App() -> impl IntoView {
                             } else {
                                 set_action_busy.set(false);
                                 settle_runtime();
-                                show_toast(
+                                report_failure(
+                                    OperationKind::Stop,
                                     format!("Failed to stop: {}", res.message),
-                                    ToastType::Error,
                                 );
                                 push_log(
                                     set_app_logs,
@@ -690,9 +778,9 @@ pub fn App() -> impl IntoView {
                         Err(_) => {
                             set_action_busy.set(false);
                             settle_runtime();
-                            show_toast(
+                            report_failure(
+                                OperationKind::Stop,
                                 "Failed to parse stop response".to_string(),
-                                ToastType::Error,
                             );
                         }
                     }
@@ -700,7 +788,7 @@ pub fn App() -> impl IntoView {
                 Err(err) => {
                     set_action_busy.set(false);
                     settle_runtime();
-                    show_toast(js_error_message(err), ToastType::Error);
+                    report_failure(OperationKind::Stop, js_error_message(err));
                 }
             }
         });
@@ -720,16 +808,17 @@ pub fn App() -> impl IntoView {
         }
 
         set_is_checking_update.set(true);
+        let t = i18n.t_untracked();
         spawn_local(async move {
             let mut found = Vec::<String>::new();
+            let mut failures = Vec::<String>::new();
 
             match tauri_invoke("check_for_update", empty_args()).await {
                 Ok(result) => match serde_wasm_bindgen::from_value::<UpdateInfo>(result) {
                     Ok(info) => {
                         if info.available {
-                            found.push(format!(
-                                "Launcher {}",
-                                info.version.as_deref().unwrap_or("unknown")
+                            found.push((t.launcher_version)(
+                                info.version.as_deref().unwrap_or(t.unknown),
                             ));
                         }
                         set_update_info.set(Some(info));
@@ -738,7 +827,7 @@ pub fn App() -> impl IntoView {
                         let message = "Launcher update check failed. See App Logs for details.";
                         push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                         if notify {
-                            show_toast(message.to_string(), ToastType::Error);
+                            failures.push(message.to_string());
                         }
                     }
                 },
@@ -747,7 +836,7 @@ pub fn App() -> impl IntoView {
                         format!("Launcher update check failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                     if notify {
-                        show_toast(message, ToastType::Error);
+                        failures.push(message);
                     }
                 }
             }
@@ -758,7 +847,7 @@ pub fn App() -> impl IntoView {
                         if info.available {
                             found.push(format!(
                                 "RustFS {}",
-                                info.latest_version.as_deref().unwrap_or("unknown")
+                                info.latest_version.as_deref().unwrap_or(t.unknown)
                             ));
                         }
                         set_rustfs_update_info.set(Some(info));
@@ -767,7 +856,7 @@ pub fn App() -> impl IntoView {
                         let message = "RustFS update check failed. See App Logs for details.";
                         push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                         if notify {
-                            show_toast(message.to_string(), ToastType::Error);
+                            failures.push(message.to_string());
                         }
                     }
                 },
@@ -775,28 +864,23 @@ pub fn App() -> impl IntoView {
                     let message = format!("RustFS update check failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
                     if notify {
-                        show_toast(message, ToastType::Error);
+                        failures.push(message);
                     }
                 }
             }
 
+            if notify && !failures.is_empty() {
+                report_failure(OperationKind::Check, failures.join(" "));
+            }
+
             if notify {
-                if found.is_empty() {
-                    show_toast(
-                        "You are running the latest versions".to_string(),
-                        ToastType::Success,
-                    );
-                } else {
-                    show_toast(
-                        format!("Update available: {}", found.join(" · ")),
-                        ToastType::Success,
-                    );
+                if !found.is_empty() {
+                    show_toast((t.update_available)(&found.join(" · ")), ToastType::Success);
+                } else if failures.is_empty() {
+                    show_toast(t.all_up_to_date.to_string(), ToastType::Success);
                 }
             } else if !found.is_empty() {
-                show_toast(
-                    format!("Update available: {}", found.join(" · ")),
-                    ToastType::Info,
-                );
+                show_toast((t.update_available)(&found.join(" · ")), ToastType::Info);
             }
 
             set_is_checking_update.set(false);
@@ -811,6 +895,7 @@ pub fn App() -> impl IntoView {
     });
 
     let check_update = move |_| {
+        set_action_failure.set(None);
         run_update_checks(true);
     };
 
@@ -819,29 +904,24 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        if can_stop.get_untracked()
-            && !confirm_action(
-                "Updating the launcher stops the RustFS service it manages and restarts the app once the update is installed. Continue?",
-            )
-        {
+        let t = i18n.t_untracked();
+        if can_stop.get_untracked() && !confirm_action(t.confirm_launcher_update) {
             return;
         }
 
+        set_action_failure.set(None);
         set_is_installing_update.set(true);
         set_update_progress.set(Some(0));
-        show_toast(
-            "Downloading and installing the launcher update…".to_string(),
-            ToastType::Info,
-        );
+        show_toast(t.installing_launcher_update.to_string(), ToastType::Info);
         spawn_local(async move {
             match tauri_invoke("install_update", empty_args()).await {
                 Ok(result) => {
                     if serde_wasm_bindgen::from_value::<CommandResponse>(result).is_err() {
                         set_is_installing_update.set(false);
                         set_update_progress.set(None);
-                        show_toast(
+                        report_failure(
+                            OperationKind::Upgrade,
                             "Launcher update failed. See App Logs for details.".to_string(),
-                            ToastType::Error,
                         );
                     }
                 }
@@ -850,7 +930,7 @@ pub fn App() -> impl IntoView {
                     set_update_progress.set(None);
                     let message = format!("Launcher update failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
-                    show_toast(message, ToastType::Error);
+                    report_failure(OperationKind::Upgrade, message);
                 }
             }
         });
@@ -861,24 +941,20 @@ pub fn App() -> impl IntoView {
             return;
         }
 
-        if can_stop.get_untracked()
-            && !confirm_action(
-                "Updating RustFS stops the service managed by this launcher. Launch it again afterwards to use the new build. Continue?",
-            )
-        {
+        let t = i18n.t_untracked();
+        if can_stop.get_untracked() && !confirm_action(t.confirm_rustfs_update) {
             return;
         }
 
+        set_action_failure.set(None);
         set_is_installing_rustfs.set(true);
         set_rustfs_update_progress.set(Some(0));
-        show_toast(
-            "Downloading and installing the RustFS update…".to_string(),
-            ToastType::Info,
-        );
+        show_toast(t.installing_rustfs_update.to_string(), ToastType::Info);
         spawn_local(async move {
             match tauri_invoke("install_rustfs_update", empty_args()).await {
                 Ok(result) => match serde_wasm_bindgen::from_value::<CommandResponse>(result) {
                     Ok(response) => {
+                        set_action_failure.set(None);
                         show_toast(response.message.clone(), ToastType::Success);
                         push_log(set_app_logs, response.message, APP_LOG_CAPACITY);
                         if let Ok(version_value) =
@@ -907,16 +983,16 @@ pub fn App() -> impl IntoView {
                         );
                     }
                     Err(_) => {
-                        show_toast(
+                        report_failure(
+                            OperationKind::Upgrade,
                             "RustFS update failed. See App Logs for details.".to_string(),
-                            ToastType::Error,
                         );
                     }
                 },
                 Err(err) => {
                     let message = format!("RustFS update failed: {}", js_error_message(err));
                     push_log(set_app_logs, format!("[ERROR] {message}"), APP_LOG_CAPACITY);
-                    show_toast(message, ToastType::Error);
+                    report_failure(OperationKind::Upgrade, message);
                 }
             }
             set_is_installing_rustfs.set(false);
@@ -965,32 +1041,102 @@ pub fn App() -> impl IntoView {
 
     view! {
         <style>{LOGS_CSS}</style>
-        <main class="container">
+        {move || show_tips.get().then(|| view! {
+            <div class="tips-banner" role="note">
+                <span class="tips-banner-icon" aria-hidden="true">"!"</span>
+                <span class="tips-banner-text">{move || i18n.t().banner_text}</span>
+                <button
+                    class="tips-banner-close"
+                    aria-label=move || i18n.t().banner_close
+                    on:click=move |_| set_show_tips.set(false)
+                >
+                    "×"
+                </button>
+            </div>
+        })}
+        <main
+            class="container"
+            class:logs-open=move || logs_open.get()
+            on:keydown=close_logs
+        >
             <Toast toasts=toasts remove_toast=remove_toast />
 
-            <div class="sidebar">
-                <div class="header hero-card">
-                    <span class="eyebrow">"Control Plane"</span>
+            <header class="topbar">
+                <div class="topbar-title">
                     <h1>"RustFS Launcher"</h1>
-
                     <div class="status-cluster" role="status" aria-live="polite">
                         <div class="service-indicator" class:online=move || service_status.get()>
                             <span class="status-dot"></span>
                             <span class="status-text">
-                                {move || if service_status.get() { "Service Online" } else { "Service Offline" }}
+                                {move || {
+                                    let t = i18n.t();
+                                    if service_status.get() { t.service_online } else { t.service_offline }
+                                }}
                             </span>
                         </div>
                         <div class="launcher-indicator" class:managed=move || can_stop.get()>
-                            {move || if can_stop.get() {
-                                "Managed by Launcher"
-                            } else if is_running.get() {
-                                "Detected Externally"
-                            } else {
-                                "Ready to Launch"
+                            {move || {
+                                let t = i18n.t();
+                                if can_stop.get() {
+                                    t.managed_by_launcher
+                                } else if is_running.get() {
+                                    t.detected_externally
+                                } else {
+                                    t.ready_to_launch
+                                }
                             }}
                         </div>
                     </div>
                 </div>
+                <div class="topbar-actions">
+                    <div class="lang-switch" role="group" aria-label=move || i18n.t().language>
+                        {Lang::ALL
+                            .into_iter()
+                            .map(|lang| view! {
+                                <button
+                                    type="button"
+                                    class="lang-option"
+                                    class:active=move || i18n.lang() == lang
+                                    aria-pressed=move || (i18n.lang() == lang).to_string()
+                                    lang=lang.code()
+                                    title=lang.full_name()
+                                    aria-label=lang.full_name()
+                                    on:click=move |_| i18n.set(lang)
+                                >
+                                    {lang.native_name()}
+                                </button>
+                            })
+                            .collect_view()}
+                    </div>
+                    <button
+                        type="button"
+                        class="logs-toggle"
+                        node_ref=logs_toggle_ref
+                        aria-expanded=move || if logs_open.get() { "true" } else { "false" }
+                        aria-controls="logs-panel"
+                        on:click=toggle_logs
+                    >
+                        {move || {
+                            let t = i18n.t();
+                            if logs_open.get() { t.hide_logs } else { t.show_logs }
+                        }}
+                    </button>
+                </div>
+            </header>
+
+            <div class="workspace">
+                <div class="workspace-scroll" node_ref=workspace_scroll_ref>
+                <ConfigForm
+                    config=config
+                    set_config=set_config
+                    is_running=is_running
+                    can_stop=can_stop
+                    action_busy=action_busy
+                    on_launch=Callback::new(launch_rustfs)
+                    on_stop=Callback::new(stop_rustfs)
+                    action_failure=action_failure
+                    clear_action_failure=Callback::new(move |_| set_action_failure.set(None))
+                />
 
                 <div class="summary-grid">
                     <button
@@ -998,10 +1144,10 @@ pub fn App() -> impl IntoView {
                         class="summary-card"
                         class:clickable=move || service_status.get()
                         disabled=move || !service_status.get()
-                        title="Open API endpoint"
+                        title=move || i18n.t().open_api_title
                         on:click=open_api
                     >
-                        <span class="summary-label">"API"</span>
+                        <span class="summary-label">{move || i18n.t().api_label}</span>
                         <strong>{move || format!(":{}", config.get().port.unwrap_or(DEFAULT_API_PORT))}</strong>
                     </button>
                     <button
@@ -1009,30 +1155,33 @@ pub fn App() -> impl IntoView {
                         class="summary-card"
                         class:clickable=move || service_status.get() && config.get().console_enable
                         disabled=move || !service_status.get() || !config.get().console_enable
-                        title="Open Console"
+                        title=move || i18n.t().open_console_title
                         on:click=open_console
                     >
-                        <span class="summary-label">"Console"</span>
+                        <span class="summary-label">{move || i18n.t().console_label}</span>
                         <strong>{move || {
                             let current = config.get();
                             if current.console_enable {
                                 format!(":{}", current.console_port.unwrap_or(DEFAULT_CONSOLE_PORT))
                             } else {
-                                "Disabled".to_string()
+                                i18n.t().disabled.to_string()
                             }
                         }}</strong>
                     </button>
                     <div class="summary-card">
-                        <span class="summary-label">"Mode"</span>
-                        <strong>{move || if primary_action(can_stop.get(), action_busy.get(), false).lock_form { "Locked" } else { "Editable" }}</strong>
+                        <span class="summary-label">{move || i18n.t().mode_label}</span>
+                        <strong>{move || {
+                            let t = i18n.t();
+                            if primary_action(can_stop.get(), action_busy.get(), false).lock_form { t.mode_locked } else { t.mode_editable }
+                        }}</strong>
                     </div>
                 </div>
 
                 <section class="update-card">
                     <div class="update-heading">
                         <div>
-                            <span class="summary-label">"Software Update"</span>
-                            <strong>"Version & Updates"</strong>
+                            <span class="summary-label">{move || i18n.t().software_update}</span>
+                            <strong>{move || i18n.t().version_and_updates}</strong>
                         </div>
                         <button
                             type="button"
@@ -1040,7 +1189,10 @@ pub fn App() -> impl IntoView {
                             disabled=updates_busy
                             on:click=check_update
                         >
-                            {move || if is_checking_update.get() { "Checking…" } else { "Check for Updates" }}
+                            {move || {
+                                let t = i18n.t();
+                                if is_checking_update.get() { t.checking } else { t.check_for_updates }
+                            }}
                         </button>
                     </div>
 
@@ -1052,32 +1204,31 @@ pub fn App() -> impl IntoView {
                     </p>
 
                     <div class="version-row">
-                        <span>{move || format!(
-                            "Launcher {}",
-                            version_info.get().map(|info| info.launcher_version).unwrap_or_else(|| "—".to_string())
+                        <span>{move || (i18n.t().launcher_version)(
+                            &version_info.get().map(|info| info.launcher_version).unwrap_or_else(|| "—".to_string())
                         )}</span>
                         <span>{move || {
+                            let t = i18n.t();
                             let info = version_info.get();
                             let version = info
                                 .as_ref()
                                 .map(|info| info.rustfs_version.as_str())
                                 .unwrap_or("—");
-                            let source = info
-                                .as_ref()
-                                .map(|info| rustfs_source_label(info.rustfs_managed))
-                                .unwrap_or("bundled");
-                            format!("RustFS {version} ({source})")
+                            let managed = info.as_ref().is_some_and(|info| info.rustfs_managed);
+                            let source = if managed { t.source_installed } else { t.source_bundled };
+                            (t.rustfs_version)(version, source)
                         }}</span>
                     </div>
 
                     {move || update_info.get().map(|info| {
+                        let t = i18n.t();
                         if info.available {
-                            let version = info.version.unwrap_or_else(|| "unknown".to_string());
-                            let notes = info.notes.unwrap_or_else(|| "No release notes for this version.".to_string());
+                            let version = info.version.unwrap_or_else(|| t.unknown.to_string());
+                            let notes = info.notes.unwrap_or_else(|| t.no_release_notes.to_string());
                             view! {
                                 <div class="update-available">
                                     <div>
-                                        <strong>{format!("Launcher {}", version)}</strong>
+                                        <strong>{(t.launcher_version)(&version)}</strong>
                                         <p>{notes}</p>
                                     </div>
                                     <button
@@ -1086,23 +1237,24 @@ pub fn App() -> impl IntoView {
                                         disabled=updates_busy
                                         on:click=install_update
                                     >
-                                        {move || if is_installing_update.get() { "Installing…" } else { "Update Launcher" }}
+                                        {move || if is_installing_update.get() { t.installing } else { t.update_launcher }}
                                     </button>
                                 </div>
                             }.into_any()
                         } else {
-                            view! { <p class="update-current">"Launcher is up to date."</p> }.into_any()
+                            view! { <p class="update-current">{t.launcher_up_to_date}</p> }.into_any()
                         }
                     })}
 
                     {move || rustfs_update_info.get().map(|info| {
+                        let t = i18n.t();
                         if info.available {
-                            let version = info.latest_version.unwrap_or_else(|| "unknown".to_string());
+                            let version = info.latest_version.unwrap_or_else(|| t.unknown.to_string());
                             let detail = match (info.release_type, info.asset_name) {
                                 (Some(kind), Some(asset)) => format!("{kind} · {asset}"),
                                 (Some(kind), None) => kind,
                                 (None, Some(asset)) => asset,
-                                (None, None) => "Verified download from the RustFS release feed.".to_string(),
+                                (None, None) => t.verified_download.to_string(),
                             };
                             view! {
                                 <div class="update-available">
@@ -1116,17 +1268,17 @@ pub fn App() -> impl IntoView {
                                         disabled=updates_busy
                                         on:click=install_rustfs_update
                                     >
-                                        {move || if is_installing_rustfs.get() { "Installing…" } else { "Update RustFS" }}
+                                        {move || if is_installing_rustfs.get() { t.installing } else { t.update_rustfs }}
                                     </button>
                                 </div>
                             }.into_any()
                         } else {
-                            view! { <p class="update-current">{rustfs_idle_message(info.notes.as_deref())}</p> }.into_any()
+                            view! { <p class="update-current">{rustfs_idle_message(info.notes.as_deref(), t.rustfs_up_to_date)}</p> }.into_any()
                         }
                     })}
 
                     {move || is_installing_update.get().then(|| view! {
-                        <div class="update-progress" aria-label="Launcher update progress">
+                        <div class="update-progress" aria-label=move || i18n.t().launcher_progress>
                             <div
                                 class="update-progress-bar"
                                 style:width=move || format!("{}%", update_progress.get().unwrap_or(8))
@@ -1135,7 +1287,7 @@ pub fn App() -> impl IntoView {
                     })}
 
                     {move || is_installing_rustfs.get().then(|| view! {
-                        <div class="update-progress" aria-label="RustFS update progress">
+                        <div class="update-progress" aria-label=move || i18n.t().rustfs_progress>
                             <div
                                 class="update-progress-bar"
                                 style:width=move || format!("{}%", rustfs_update_progress.get().unwrap_or(8))
@@ -1143,28 +1295,28 @@ pub fn App() -> impl IntoView {
                         </div>
                     })}
                 </section>
-
-                <ConfigForm
-                    config=config
-                    set_config=set_config
-                    is_running=is_running
-                    can_stop=can_stop
-                    action_busy=action_busy
-                    on_launch=Callback::new(launch_rustfs)
-                    on_stop=Callback::new(stop_rustfs)
-                />
+                </div>
             </div>
 
-            <div class="logs-section">
-                <LogViewer
-                    app_logs=app_logs
-                    set_app_logs=set_app_logs
-                    rustfs_logs=rustfs_logs
-                    set_rustfs_logs=set_rustfs_logs
-                    current_log_type=current_log_type
-                    set_current_log_type=set_current_log_type
-                />
-            </div>
+            <Show when=move || logs_open.get()>
+                <div
+                    id="logs-panel"
+                    class="logs-section"
+                    tabindex="-1"
+                    role="region"
+                    aria-label=move || i18n.t().logs_region
+                    node_ref=logs_panel_ref
+                >
+                    <LogViewer
+                        app_logs=app_logs
+                        set_app_logs=set_app_logs
+                        rustfs_logs=rustfs_logs
+                        set_rustfs_logs=set_rustfs_logs
+                        current_log_type=current_log_type
+                        set_current_log_type=set_current_log_type
+                    />
+                </div>
+            </Show>
         </main>
     }
 }

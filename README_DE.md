@@ -9,14 +9,14 @@ Knopf und haben einen S3-Endpunkt unter `http://127.0.0.1:9000`.
 Der Server steckt bereits in der Anwendung. Es gibt nichts weiter zu installieren, kein Terminal zu öffnen und
 keine Konfigurationsdatei zu bearbeiten.
 
-![Der Launcher mit laufendem RustFS](docs/images/launcher-running.png)
+![RustFS ist online. Data Path bleibt auf dem ersten Bildschirm, die Protokolle sind verborgen](docs/images/launcher-running.png)
 
 ## Wofür Sie ihn benutzen können
 
 - Objektspeicher auf dem eigenen Laptop betreiben – für Entwicklung, Tests oder als privates Backup-Ziel, ganz
   ohne Docker.
 - Einen beliebigen S3-Client oder ein SDK auf `127.0.0.1` richten und wie einen Bucket in der Cloud benutzen.
-- Den Server im Blick behalten: Status, belegte Ports und laufende Protokolle.
+- Den Server im Blick behalten: Status und belegte Ports. Die Protokolle bleiben verborgen, bis Sie sie öffnen.
 - RustFS jederzeit starten und stoppen. Der Launcher bleibt im Infobereich, während der Server arbeitet.
 - Den Launcher – und das darin enthaltene RustFS – aus der Anwendung heraus aktualisieren.
 
@@ -120,16 +120,21 @@ Die Eingaben werden gemerkt, der nächste Start ist also ein einziger Klick.
 
 ### 6. Auf Launch drücken
 
-Klicken Sie auf **Launch RustFS**. Nach ein, zwei Sekunden steht in der Kopfzeile **Service Online / Managed by
-Launcher**, das Formular sperrt sich, und unter **App Logs** steht, was der Launcher getan hat: welche
-Binärdatei er genommen hat, mit welchen Argumenten er sie gestartet hat und welche Prozess-ID zurückkam.
+Das Fenster öffnet sich bei **Data Path** und **Launch RustFS**. Dorthin müssen Sie nicht scrollen. Die
+Protokolle bleiben verborgen, bis Sie **Show logs** drücken. **Hide logs** schließt den Bereich wieder. Eine
+Startprüfung oder eine Update-Meldung öffnet ihn nicht.
 
-Schlägt der Start fehl, steht der Grund im selben Protokollbereich. Am häufigsten sind ein Datenordner, den es
-nicht gibt, und ein bereits belegter Port.
+Klicken Sie auf **Launch RustFS**. Nach ein, zwei Sekunden wechselt der Status auf **Service Online / Managed by
+Launcher**, und das Formular sperrt sich.
+
+Schlägt Start, Stopp oder ein Update fehl, nennt der erste Bildschirm den Grund und wie Sie ihn beheben. Der
+Protokollbereich bleibt zu. Am häufigsten fehlt der Datenordner oder der Port ist schon belegt. RustFS schreibt
+außerdem Details in den Ordner `logs` neben dem Datenordner. **Show logs** zeigt die Zeilen nur, wenn Sie sie
+wollen.
 
 ### 7. Den Speicher benutzen
 
-Solange der Dienst online ist, lassen sich die Karten **API** und **Console** oben anklicken. **Console** öffnet
+Solange der Dienst online ist, lassen sich die Karten **API** und **Console** unter dem Startknopf anklicken. **Console** öffnet
 die Weboberfläche; **API** öffnet den S3-Endpunkt selbst, von dem ein Browser nur eine XML-Antwort bekommt –
 diese Adresse ist für S3-Clients gedacht.
 
@@ -181,26 +186,29 @@ mehr brauchen.
 
 ![Der Launcher vor dem ersten Start](docs/images/launcher-ready.png)
 
+Der erste Bildschirm ist **Data Path**, **Browse** und **Launch RustFS**, daneben der Dienststatus. Die
+Protokolle sind nicht zu sehen, bis Sie sie öffnen.
+
 ### Sprache
 
-Die Sprachschaltfläche (Globe-Symbol) sitzt oben rechts in der Kopfleiste. Ist die Oberfläche Arabisch, wird die
-ganze Seite gespiegelt und die Schaltfläche erscheint links.
+Über die Sprachschaltflächen (**中** / **EN** / **FR** / **日**) in der oberen Leiste wechseln Sie die
+Sprache der Oberfläche.
 
-Beim ersten Start, bevor Sie eine Sprache gewählt haben, folgt die App der Sprache des Betriebssystems. Passt
-sie zu einer der 15 eingebauten Sprachen, wird diese verwendet, sonst Englisch.
+Beim ersten Start, bevor Sie eine Sprache gewählt haben, folgt die App der Sprache des Betriebssystems
+(anhand des primären Sprachkürzels wie `zh-CN`, `zh-Hant-TW`, `fr-CA` oder `ja_JP`). Passt sie zu einer der
+4 eingebauten Sprachen, wird diese verwendet, sonst Englisch.
 
-Diese 15 Sprachen stehen unter ihren eigenen Namen: English, العربية, 簡體中文, 繁體中文, 日本語, 한국어,
-Deutsch, Français, Español, Português, Italiano, Русский, Türkçe, Bahasa Indonesia und Tiếng Việt. Die Kürzel
-sind `en`, `ar`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt`, `it`, `ru`, `tr`, `id` und `vi`.
-Vereinfachtes Chinesisch gilt für `zh-Hans` und `zh-CN`. Traditionelles Chinesisch gilt für `zh-Hant`, `zh-TW`,
-`zh-HK` und `zh-MO`.
+Die 4 eingebauten Sprachen sind 简体中文 (`zh-CN`), English (`en`), Français (`fr`) und 日本語 (`ja`).
 
 Nach der Auswahl gilt die Sprache sofort und wird gespeichert. Die Sprache des Betriebssystems ersetzt sie
 danach nicht mehr.
 
-Das Menü im Infobereich (**Show** und **Quit**) und der Windows-Installationsassistent bleiben Englisch. Das
-macOS-Paket ist ein Disk-Image zum Ziehen nach Programme, kein übersetzter Assistent. Die Sprachschaltfläche
-ändert das Launcher-Fenster.
+Deutsch ist in der Sprachauswahl der App derzeit nicht enthalten. Solange Sie keine Sprache wählen, gilt die
+Regel oben: eine der 4 eingebauten Sprachen, falls das System dazu passt, sonst Englisch.
+
+Das Menü im Infobereich (**Show** und **Quit**), der Windows-Installationsassistent, Fehlermeldungen vom
+Backend und Protokollzeilen bleiben Englisch. Das macOS-Paket ist ein Disk-Image zum Ziehen nach Programme,
+kein übersetzter Assistent. Die Sprachschaltflächen ändern das Launcher-Fenster.
 
 **Statusanzeigen.** Die erste betrifft den Server: *Service Online* heißt, dass auf dem eingestellten Host und
 Port etwas antwortet. Die zweite sagt, wem dieser Prozess gehört:
@@ -217,9 +225,10 @@ Mode ist nur *Locked*, solange dieser Launcher RustFS selbst ausführt. Ein exte
 **Version & Updates.** Zeigt die Version des Launchers und die des eingebauten RustFS und sucht auf Wunsch nach
 einem neueren Release.
 
-**Protokolle.** *App Logs* ist der Launcher selbst: wonach er gesucht hat, was er gestartet hat, warum etwas
+**Protokolle.** Beim Start verborgen. **Show logs** öffnet den Bereich; Startprüfungen und Update-Meldungen
+öffnen ihn nicht. *App Logs* ist der Launcher selbst: wonach er gesucht hat, was er gestartet hat, warum etwas
 schiefging. *RustFS Output* zeigt, was der Server auf der Konsole ausgibt – neuere RustFS-Builds schreiben ihre
-ausführlichen Protokolle in Dateien, deshalb bleibt dieser Reiter oft leer. Auto-scroll folgt neuen Zeilen,
+ausführlichen Protokolle in Dateien, deshalb bleibt dieser Reiter nach dem Öffnen oft leer. Auto-scroll folgt neuen Zeilen,
 Clear leert beide Reiter.
 
 ## Wo was landet
@@ -251,8 +260,9 @@ einen anderen API-Port oder beenden Sie das andere Programm. Für den Konsolen-P
 **Es steht Detected Externally** – auf diesem Host und Port antwortet bereits ein RustFS, das dieser Launcher
 nicht gestartet hat. Beenden Sie diesen Prozess dort, wo Sie ihn gestartet haben, oder wechseln Sie den Port.
 
-**RustFS Output bleibt leer** – das ist bei neueren RustFS-Builds normal, sie schreiben ihre Protokolle in den
-`logs`-Ordner neben Ihrem Datenordner. Was der Launcher selbst tut, steht in den App Logs.
+**RustFS Output bleibt leer** – nachdem Sie die Protokolle geöffnet haben, ist dieser Reiter oft still. Neuere
+RustFS-Builds schreiben in den `logs`-Ordner neben Ihrem Datenordner. Was der Launcher selbst tut, steht im
+anderen Reiter, App Logs.
 
 **Der Browser zeigt XML wie `AccessDenied`** – das ist die S3-API, die einem Browser antwortet; es ist nichts
 kaputt. Für eine Weboberfläche nehmen Sie die Karte **Console**, die API-Adresse gehört in einen S3-Client.
