@@ -6,7 +6,7 @@ Use this guide when contributing to RustFS Launcher; it highlights the project l
 - `src/`: Leptos client entrypoint (`main.rs`), UI composition (`app.rs`), form/log/toast components (`components/`), DTOs mirrored from the backend (`types.rs`), pure UI logic (`helpers.rs`), and contextual styles (`logs.css`).
 - `src-tauri/src/`: Tauri backend modules: `commands.rs` for invokable actions, `process.rs` for RustFS binary orchestration, `state.rs` for shared application state, `rustfs_update.rs` and `binaries.rs` for the in-app RustFS update and installed-binary bookkeeping, `platform.rs`/`version.rs`/`network.rs`/`config.rs` helpers, plus error types. Only macOS and Windows are supported targets.
 - `src-tauri/binaries/`: Platform-specific RustFS executables fetched by the build scripts; keep this directory untracked in Git.
-- `public/`: Static assets bundled by Trunk (`leptos.svg`, `tauri.svg`).
+- `public/`: Static assets bundled by Trunk. Official wordmark, Flow S, and EC 4+2 stripe SVGs, plus the subsetted `public/fonts/` webfonts. `leptos.svg` and `tauri.svg` are unused framework marks and are not product chrome.
 - `Trunk.toml` and `tauri.conf.json`: runtime configuration for the web client and desktop shell.
 
 ## Build, Test, and Development Commands
@@ -50,6 +50,19 @@ Follow Conventional Commits (`feat:`, `fix:`, `chore:`) as seen in history; keep
 Split backend and UI updates when practical to aid review.
 PRs should include an intent summary, the commands/tests run (or screenshots for UI tweaks), and links to relevant issues.
 Request review before merging and wait for CI; resolve any fmt/clippy/test failures locally first.
+
+## Design
+
+The visual source of truth is the RustFS Design System at <https://design.rustfs.com/en/agents/>. Launcher-specific tokens, type, and packaging rules are in `DESIGN.md`. Do not introduce one-off colors, radii, fonts, gradients, glows, or shadows.
+
+- Corners are square (`border-radius: 0`). No pills, circular status dots, gradient fills, or glass. The only shadow is the official overlay shadow on transient overlays.
+- Buttons stay on the existing classes: Launch is primary Signal Blue (`#0062FF`, hover `#014FDD`), Stop is destructive error (`#C51B32`), Browse, Check for Updates, and the in-app update install button are outline. Do not add a second filled primary.
+- Package only the Latin-subsetted Archivo, Geist, and Geist Mono files already in `public/fonts/`. Do not load fonts from a CDN, and do not add CJK or Arabic webfont files. Those languages use the system stacks below, switched by `lang` on `html` or a subtree. Do not put Archivo, Geist, or Geist Mono first in those stacks. Paths, directory lists, and log lines stay Geist Mono and `dir="ltr"`.
+  - `zh` / `zh-Hans` / `zh-CN`: HarmonyOS Sans SC, "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  - `zh-Hant` / `zh-TW`: HarmonyOS Sans TC, "Source Han Sans TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif
+  - `ja`: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif
+  - `ko`: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif
+  - `ar`: "Segoe UI", "Tahoma", "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif
 
 ## Communication
 与用户交流时必须全程使用中文。

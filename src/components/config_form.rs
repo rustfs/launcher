@@ -1,8 +1,8 @@
 use crate::helpers::{
-    control_class, first_screen_state, operation_failure, primary_action, ControlWeight,
-    OperationKind,
+    control_class, first_screen_state, primary_action, ControlWeight, OperationFailure,
 };
-use crate::types::{RustFsConfig, DEFAULT_CONSOLE_PORT, DEFAULT_HOST};
+use crate::i18n::{use_i18n, Strings};
+use crate::types::{RustFsConfig, DEFAULT_API_PORT, DEFAULT_CONSOLE_PORT, DEFAULT_HOST};
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use serde_json;
@@ -18,9 +18,28 @@ extern "C" {
     async fn open(options: JsValue) -> JsValue;
 }
 
-const API_PORT_ERROR_MESSAGE: &str = "API port must be a number between 1 and 65535";
-const CONSOLE_PORT_ERROR_MESSAGE: &str = "Console port must be a number between 1 and 65535";
-const PORT_CONFLICT_ERROR_MESSAGE: &str = "API port and console port must be different";
+/// Kept as a value rather than text so an alert already on screen follows a
+/// language switch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FormError {
+    ApiPort,
+    ConsolePort,
+    PortConflict,
+}
+
+impl FormError {
+    fn failure(self, t: &Strings) -> OperationFailure {
+        let (reason, fix) = match self {
+            FormError::ApiPort => (t.api_port_invalid, t.fix_port_number),
+            FormError::ConsolePort => (t.console_port_invalid, t.fix_port_number),
+            FormError::PortConflict => (t.port_conflict, t.fix_different_ports),
+        };
+        OperationFailure {
+            reason: reason.to_string(),
+            fix: fix.to_string(),
+        }
+    }
+}
 
 fn extract_dropped_paths(payload: &JsValue) -> Vec<String> {
     if let Ok(paths) = js_sys::Reflect::get(payload, &"paths".into()) {
@@ -34,16 +53,18 @@ fn extract_dropped_paths(payload: &JsValue) -> Vec<String> {
 
 static DRAG_LISTENERS_REGISTERED: AtomicBool = AtomicBool::new(false);
 
-fn parse_port_input(value: &str, error_message: &'static str) -> Result<Option<u16>, &'static str> {
+fn parse_port_input(value: &str, error: FormError) -> Result<Option<u16>, FormError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
 
-    let port = trimmed.parse::<u16>().map_err(|_| error_message)?;
+    let Ok(port) = trimmed.parse::<u16>() else {
+        return Err(error);
+    };
 
     if port == 0 {
-        return Err(error_message);
+        return Err(error);
     }
 
     Ok(Some(port))
@@ -53,29 +74,19 @@ fn validate_port_conflict(
     config: &RustFsConfig,
     api_port: Option<u16>,
     console_port: Option<u16>,
-) -> Result<(), &'static str> {
+) -> Result<(), FormError> {
     if !config.console_enable {
         return Ok(());
     }
 
-    let effective_api_port = api_port.unwrap_or(crate::types::DEFAULT_API_PORT);
+    let effective_api_port = api_port.unwrap_or(DEFAULT_API_PORT);
     let effective_console_port = console_port.unwrap_or(DEFAULT_CONSOLE_PORT);
 
     if effective_api_port == effective_console_port {
-        return Err(PORT_CONFLICT_ERROR_MESSAGE);
+        return Err(FormError::PortConflict);
     }
 
     Ok(())
-}
-
-fn alert_for(raw: String) -> impl IntoView {
-    let failure = operation_failure(OperationKind::Launch, &raw);
-    view! {
-        <div class="alert-error" role="alert">
-            <p>{failure.reason}</p>
-            <p>{failure.fix}</p>
-        </div>
-    }
 }
 
 #[component]
@@ -95,9 +106,9 @@ pub fn ConfigForm(
     host_input_ref: NodeRef<leptos::html::Input>,
     access_key_input_ref: NodeRef<leptos::html::Input>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let (is_drag_over, set_is_drag_over) = signal(false);
-    let (error_message, set_error_message) = signal(Option::<String>::None);
-    let (settings_error, set_settings_error) = signal(Option::<String>::None);
+    let (settings_error, set_settings_error) = signal(Option::<FormError>::None);
     let (port_input, set_port_input) = signal(
         config
             .get_untracked()
@@ -113,10 +124,10 @@ pub fn ConfigForm(
             .unwrap_or_default(),
     );
 
-    let clear_related_error = move |messages: &[&'static str]| {
+    let clear_related_error = move |related: &[FormError]| {
         set_settings_error.update(|error| {
-            if let Some(current) = error.as_deref() {
-                if messages.contains(&current) {
+            if let Some(current) = error.as_ref() {
+                if related.contains(current) {
                     *error = None;
                 }
             }
@@ -126,21 +137,19 @@ pub fn ConfigForm(
     let validate_and_store_api_port = move |value: String| {
         set_port_input.set(value.clone());
 
-        match parse_port_input(&value, API_PORT_ERROR_MESSAGE) {
+        match parse_port_input(&value, FormError::ApiPort) {
             Ok(port) => {
                 let current = config.get_untracked();
                 set_config.update(|c| c.port = port);
 
                 match validate_port_conflict(&current, port, current.console_port) {
-                    Ok(()) => {
-                        clear_related_error(&[API_PORT_ERROR_MESSAGE, PORT_CONFLICT_ERROR_MESSAGE])
-                    }
-                    Err(message) => set_settings_error.set(Some(message.to_string())),
+                    Ok(()) => clear_related_error(&[FormError::ApiPort, FormError::PortConflict]),
+                    Err(error) => set_settings_error.set(Some(error)),
                 }
             }
-            Err(message) => {
+            Err(error) => {
                 set_config.update(|c| c.port = None);
-                set_settings_error.set(Some(message.to_string()));
+                set_settings_error.set(Some(error));
             }
         }
     };
@@ -148,22 +157,21 @@ pub fn ConfigForm(
     let validate_and_store_console_port = move |value: String| {
         set_console_port_input.set(value.clone());
 
-        match parse_port_input(&value, CONSOLE_PORT_ERROR_MESSAGE) {
+        match parse_port_input(&value, FormError::ConsolePort) {
             Ok(console_port) => {
                 let current = config.get_untracked();
                 set_config.update(|c| c.console_port = console_port);
 
                 match validate_port_conflict(&current, current.port, console_port) {
-                    Ok(()) => clear_related_error(&[
-                        CONSOLE_PORT_ERROR_MESSAGE,
-                        PORT_CONFLICT_ERROR_MESSAGE,
-                    ]),
-                    Err(message) => set_settings_error.set(Some(message.to_string())),
+                    Ok(()) => {
+                        clear_related_error(&[FormError::ConsolePort, FormError::PortConflict])
+                    }
+                    Err(error) => set_settings_error.set(Some(error)),
                 }
             }
-            Err(message) => {
+            Err(error) => {
                 set_config.update(|c| c.console_port = None);
-                set_settings_error.set(Some(message.to_string()));
+                set_settings_error.set(Some(error));
             }
         }
     };
@@ -199,7 +207,6 @@ pub fn ConfigForm(
                                         extract_dropped_paths(&payload).into_iter().next()
                                     {
                                         set_config.update(|c| c.data_path = first_path);
-                                        set_error_message.set(None);
                                     }
                                 }
                             })
@@ -265,17 +272,17 @@ pub fn ConfigForm(
             return;
         }
 
+        let title = i18n.t_untracked().select_data_dir;
         spawn_local(async move {
             let options = serde_wasm_bindgen::to_value(&serde_json::json!({
                 "directory": true,
-                "title": "Select RustFS Data Directory"
+                "title": title
             }))
             .unwrap();
 
             if let Some(result) = open(options).await.as_string() {
                 if !result.is_empty() {
                     set_config.update(|c| c.data_path = result);
-                    set_error_message.set(None);
                 }
             }
         });
@@ -292,22 +299,20 @@ pub fn ConfigForm(
             return;
         }
 
-        set_error_message.set(None);
-
-        let port = match parse_port_input(&port_input.get(), API_PORT_ERROR_MESSAGE) {
+        let port = match parse_port_input(&port_input.get(), FormError::ApiPort) {
             Ok(port) => port,
-            Err(message) => {
-                set_settings_error.set(Some(message.to_string()));
+            Err(error) => {
+                set_settings_error.set(Some(error));
                 set_settings_open.set(true);
                 return;
             }
         };
 
         let console_port = if current_config.console_enable {
-            match parse_port_input(&console_port_input.get(), CONSOLE_PORT_ERROR_MESSAGE) {
+            match parse_port_input(&console_port_input.get(), FormError::ConsolePort) {
                 Ok(console_port) => console_port,
-                Err(message) => {
-                    set_settings_error.set(Some(message.to_string()));
+                Err(error) => {
+                    set_settings_error.set(Some(error));
                     set_settings_open.set(true);
                     return;
                 }
@@ -316,8 +321,8 @@ pub fn ConfigForm(
             current_config.console_port
         };
 
-        if let Err(message) = validate_port_conflict(&current_config, port, console_port) {
-            set_settings_error.set(Some(message.to_string()));
+        if let Err(error) = validate_port_conflict(&current_config, port, console_port) {
+            set_settings_error.set(Some(error));
             set_settings_open.set(true);
             return;
         }
@@ -344,9 +349,14 @@ pub fn ConfigForm(
         <form class="config-form" on:submit=handle_submit>
             <Show when=move || screen().show_path>
                 <div class="form-group">
-                    <label for="data-path">"Data path" <span class="required">"*"</span></label>
+                    <label for="data-path">
+                        {move || i18n.t().data_path}
+                        " "
+                        <span class="required">"*"</span>
+                    </label>
                     <div
                         class="path-input-group"
+                        dir="ltr"
                         class:drag-over=move || is_drag_over.get() && !can_stop.get() && !action_busy.get()
                     >
                         <input
@@ -355,15 +365,12 @@ pub fn ConfigForm(
                             dir="ltr"
                             spellcheck="false"
                             autocomplete="off"
-                            placeholder="Select or drop a data folder"
+                            placeholder=move || i18n.t().data_path_placeholder
                             prop:value=move || config.get().data_path
                             disabled=move || action_busy.get()
                             on:input=move |ev| {
                                 let value = event_target_value(&ev);
-                                set_config.update(|c| c.data_path = value.clone());
-                                if !value.trim().is_empty() {
-                                    set_error_message.set(None);
-                                }
+                                set_config.update(|c| c.data_path = value);
                             }
                         />
                         <button
@@ -372,7 +379,7 @@ pub fn ConfigForm(
                             disabled=move || action_busy.get()
                             on:click=select_folder
                         >
-                            "Browse"
+                            {move || i18n.t().browse}
                         </button>
                     </div>
                 </div>
@@ -385,18 +392,16 @@ pub fn ConfigForm(
                         class=control_class(ControlWeight::Primary)
                         disabled=move || screen().launch_disabled
                     >
-                        {move || screen().launch_label}
+                        {move || i18n.t().action_label(screen().launch_label)}
                     </button>
                 </div>
             </Show>
 
             <Show when=move || is_running.get() && !can_stop.get()>
                 <p class="field-hint">
-                    "Something is already listening on this host and port, but this launcher did not start it. Change the port in Settings, or stop that program, then launch."
+                    {move || i18n.t().external_listener}
                 </p>
             </Show>
-
-            {move || error_message.get().map(alert_for)}
         </form>
 
         <Show when=move || settings_open.get()>
@@ -409,22 +414,22 @@ pub fn ConfigForm(
                     aria-labelledby="settings-title"
                 >
                     <div class="overlay-heading">
-                        <h2 id="settings-title">"Settings"</h2>
+                        <h2 id="settings-title">{move || i18n.t().settings}</h2>
                         <button
                             type="button"
                             class="icon-button"
-                            aria-label="Close settings"
+                            aria-label=move || i18n.t().close_settings
                             on:click=move |_| on_dismiss_settings.run(())
                         >
                             "×"
                         </button>
                     </div>
                     <p class="overlay-note">
-                        "Host, port, and console apply the next time you launch. A new install fills in 0.0.0.0, so other devices on your network can connect. An empty host stays on this computer."
+                        {move || i18n.t().settings_note}
                     </p>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="host">"Host"</label>
+                            <label for="host">{move || i18n.t().host}</label>
                             <input
                                 id="host"
                                 node_ref=host_input_ref
@@ -442,7 +447,7 @@ pub fn ConfigForm(
                             />
                         </div>
                         <div class="form-group">
-                            <label for="port">"API port"</label>
+                            <label for="port">{move || i18n.t().api_port}</label>
                             <input
                                 id="port"
                                 type="number"
@@ -477,11 +482,11 @@ pub fn ConfigForm(
                                 set_settings_error.set(None);
                             }
                         />
-                        <span>"Console"</span>
+                        <span>{move || i18n.t().console}</span>
                     </label>
                     <Show when=move || config.get().console_enable>
                         <div class="form-group">
-                            <label for="console-port">"Console port"</label>
+                            <label for="console-port">{move || i18n.t().console_port}</label>
                             <input
                                 id="console-port"
                                 type="number"
@@ -493,7 +498,17 @@ pub fn ConfigForm(
                             />
                         </div>
                     </Show>
-                    {move || settings_error.get().map(alert_for)}
+                    {move || {
+                        settings_error.get().map(|error| {
+                            let failure = error.failure(i18n.t());
+                            view! {
+                                <div class="alert-error" role="alert">
+                                    <p>{failure.reason}</p>
+                                    <p>{failure.fix}</p>
+                                </div>
+                            }
+                        })
+                    }}
                 </div>
             </div>
         </Show>
@@ -508,21 +523,21 @@ pub fn ConfigForm(
                     aria-labelledby="admin-title"
                 >
                     <div class="overlay-heading">
-                        <h2 id="admin-title">"Change administrator"</h2>
+                        <h2 id="admin-title">{move || i18n.t().change_admin}</h2>
                         <button
                             type="button"
                             class="icon-button"
-                            aria-label="Close change administrator"
+                            aria-label=move || i18n.t().close_change_admin
                             on:click=move |_| on_dismiss_admin.run(())
                         >
                             "×"
                         </button>
                     </div>
                     <p class="overlay-note">
-                        "These keys are used the next time you launch. RustFS keeps the keys shown on the main screen until then. The published default is rustfsadmin."
+                        {move || i18n.t().admin_note}
                     </p>
                     <div class="form-group">
-                        <label for="access-key">"Access key"</label>
+                        <label for="access-key">{move || i18n.t().access_key}</label>
                         <input
                             id="access-key"
                             node_ref=access_key_input_ref
@@ -540,7 +555,7 @@ pub fn ConfigForm(
                         />
                     </div>
                     <div class="form-group">
-                        <label for="secret-key">"Secret key"</label>
+                        <label for="secret-key">{move || i18n.t().secret_key}</label>
                         <input
                             id="secret-key"
                             type="text"

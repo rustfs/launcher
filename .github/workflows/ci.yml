@@ -68,6 +68,7 @@ jobs:
           bash scripts/select-rustfs-asset.sh --self-test
           bash scripts/verify-rustfs-checksum.sh --self-test
           bash scripts/test-package-macos-artifacts.sh
+          bash scripts/test-prepare-macos-rustfs.sh
 
   test-native:
     name: Native tests (${{ matrix.os }})

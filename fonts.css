@@ -1,0 +1,27 @@
+/* Local faces only. CSP is default-src 'self'; do not point these at a CDN.
+   Files are the official variable fonts, subset and axis-limited. See DESIGN.md. */
+
+@font-face {
+  font-family: "Archivo";
+  src: url("/public/fonts/Archivo.woff2") format("woff2");
+  font-weight: 700 800;
+  font-stretch: 112% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("/public/fonts/Geist.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/public/fonts/GeistMono.woff2") format("woff2");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}

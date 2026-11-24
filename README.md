@@ -24,25 +24,57 @@ configuration file to edit.
 ## Download
 
 Grab the newest file for your machine from the [releases page](https://github.com/rustfs/launcher/releases).
+Release **1.0.6** is the current latest release.
 
 | Your system | File |
 | --- | --- |
-| Windows 10 / 11, 64-bit | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (about 50 MB) |
-| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS, Intel | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11, 64-bit | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.dmg` and `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS, Intel (x86_64) | Not published in release 1.0.6 |
 
-Windows on ARM works as well — it runs the x86_64 build through emulation. There is no Linux package yet; on
-Linux, run the [RustFS binary](https://github.com/rustfs/rustfs/releases) directly.
+On 1.0.6 the files are `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg`, and `rustfs-launcher-macos-aarch64-1.0.6.app.zip`. There is no
+`rustfs-launcher-macos-x86_64-*` package, so an Intel Mac cannot install this release.
+
+Windows on ARM works as well — it runs the x86_64 build through emulation. There is no Linux launcher package;
+on Linux, run the [RustFS binary](https://github.com/rustfs/rustfs/releases) directly.
 
 The downloads are large because a full RustFS server is packed into the installer.
+
+Names that contain `-latest` on the same release are copies of those versioned installers, byte for byte.
+`rustfs-launcher-windows-x86_64-latest-setup.exe` and `rustfs-launcher-windows-x86_64-latest.exe` are that
+Windows installer under stable names. The macOS `-latest.dmg` and `-latest.app.zip` files are the same kind of
+copy. Prefer the versioned `-setup.exe` or `.dmg`.
+
+### Check the download
+
+On that same release page, open **Assets** and download `SHA256SUMS` next to the installer. Each line is a
+SHA-256 hash and the file name.
+
+On Windows, in PowerShell, from the folder that contains the installer:
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+On macOS, in Terminal:
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+The hash must match the line for that exact file name in `SHA256SUMS`. Upper and lower case do not matter. If
+you downloaded the `.app.zip`, check that file name the same way. For a later release, use the file names and
+`SHA256SUMS` published on that release.
 
 ## Windows, step by step
 
 ### 1. Download the installer
 
-Open the [releases page](https://github.com/rustfs/launcher/releases), expand **Assets** on the newest release
-and click the file ending in `-setup.exe`. Edge and Chrome sometimes flag installers they rarely see; choose
-**Keep** if the browser asks.
+Open the [releases page](https://github.com/rustfs/launcher/releases), expand **Assets** on the newest release,
+and download `rustfs-launcher-windows-x86_64-<version>-setup.exe` (for 1.0.6,
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`). Compare it with `SHA256SUMS` as described above. Edge and
+Chrome sometimes flag installers they rarely see; choose **Keep** if the browser asks.
 
 ### 2. Get past SmartScreen
 
@@ -162,9 +194,10 @@ folder. Your data folder is left alone; delete it yourself if you no longer need
 
 ## macOS
 
-1. Unzip the `.app.zip` and drag **RustFS Launcher** into **Applications**.
-2. The first launch is blocked, because the release builds are not notarized by Apple. Either right-click the
-   app and choose **Open**, or clear the quarantine flag from a terminal:
+1. Open the `.dmg` and drag **RustFS Launcher** into **Applications**. If you downloaded the `.app.zip` instead,
+   unzip it and drag the app the same way.
+2. The first launch is blocked, because these builds are not notarized. Right-click the app and choose **Open**,
+   then confirm. Clearing the quarantine flag in Terminal is optional:
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -198,6 +231,23 @@ when one exists, the launcher and RustFS updates. It is not a button on the firs
 why something failed. *RustFS Output* shows whatever the server prints on its console — recent RustFS builds
 write their detailed logs to files instead, so this tab is often quiet after you open it. Auto-scroll follows
 new lines; Clear empties both tabs.
+
+### Language
+
+Use the language buttons (**中** / **EN** / **FR** / **日**) in the top bar to switch the interface language.
+
+The first time you open the app, before you have chosen a language, it follows the operating system language
+(matching the primary language tag such as `zh-CN`, `zh-Hant-TW`, `fr-CA`, or `ja_JP`). If that language is
+one of the 4 built-in languages, the app uses it; otherwise it uses English.
+
+The 4 built-in languages are 简体中文 (`zh-CN`), English (`en`), Français (`fr`), and 日本語 (`ja`).
+
+After you pick a language, it takes effect immediately and is remembered. The operating system language does
+not replace that choice later.
+
+The tray menu (**Show** and **Quit**), the Windows setup wizard, backend error messages, and log lines stay in
+English. The macOS download is a disk image you drag into Applications; it is not a translated setup wizard.
+The language buttons change the launcher window.
 
 ## Where things end up
 
@@ -246,7 +296,8 @@ Use **Open Console** for a web interface, and give the listening address to an S
 **The window disappeared** — closing the window only hides it. Use the tray icon on Windows, or the Dock icon on
 macOS.
 
-**macOS says the app "cannot be opened"** — see the quarantine command in the macOS section above.
+**macOS says the app "cannot be opened"** — right-click the app and choose **Open**, then confirm. The `xattr`
+command in the macOS section is an optional alternative.
 
 ## Building it yourself
 
