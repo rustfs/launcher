@@ -8,38 +8,69 @@ RustFS Launcher는 S3 호환 오브젝트 스토리지 서버인 [RustFS](https:
 
 서버는 앱 안에 함께 들어 있습니다. 따로 설치할 것도, 터미널을 열 일도, 설정 파일을 고칠 일도 없습니다.
 
-![RustFS가 실행 중인 런처](docs/images/launcher-running.png)
+![RustFS가 온라인이다. Data Path는 첫 화면에 남고 로그는 숨겨져 있다](docs/images/launcher-running.png)
 
 ## 이런 데 쓸 수 있습니다
 
 - Docker 없이 노트북에서 오브젝트 스토리지를 돌려 개발·테스트하거나 개인 백업 대상으로 사용하기.
 - 아무 S3 클라이언트나 SDK를 `127.0.0.1`로 향하게 해서 클라우드의 버킷처럼 쓰기.
-- 서버 상태, 사용 중인 포트, 실시간 로그 확인하기.
+- 서버 상태와 사용 중인 포트를 확인하기. 로그는 직접 열기 전까지 숨겨져 있습니다.
 - 원할 때 RustFS를 시작하고 멈추기. 서버가 도는 동안 런처는 트레이에 남아 있습니다.
 - 런처와 그 안에 들어 있는 RustFS를 앱에서 바로 업데이트하기.
 
 ## 내려받기
 
 [릴리스 페이지](https://github.com/rustfs/launcher/releases)에서 사용 중인 환경에 맞는 파일을 받으세요.
+현재 최신 릴리스는 **1.0.6**입니다.
 
 | 사용 환경 | 파일 |
 | --- | --- |
-| Windows 10 / 11 (64비트) | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (약 50 MB) |
-| macOS (Apple Silicon) | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS (Intel) | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11 (64비트) | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS (Apple Silicon) | `rustfs-launcher-macos-aarch64-<version>.dmg` 및 `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS (Intel, x86_64) | 릴리스 1.0.6에는 없습니다 |
 
-Windows on ARM에서도 동작합니다. x86_64 빌드가 에뮬레이션으로 실행됩니다. 리눅스 패키지는 아직 없으며,
+1.0.6의 파일 이름은 `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg`, `rustfs-launcher-macos-aarch64-1.0.6.app.zip`입니다.
+`rustfs-launcher-macos-x86_64-*` 패키지는 없으므로 Intel Mac에서는 이 릴리스를 설치할 수 없습니다.
+
+Windows on ARM에서도 동작합니다. x86_64 빌드가 에뮬레이션으로 실행됩니다. 리눅스용 런처 패키지는 없으며,
 리눅스에서는 [RustFS 바이너리](https://github.com/rustfs/rustfs/releases)를 직접 실행하면 됩니다.
 
 파일 용량이 큰 이유는 RustFS 서버 전체가 설치 파일에 들어 있기 때문입니다.
+
+같은 릴리스에서 이름에 `-latest`가 들어간 파일은 버전 번호가 붙은 설치 파일과 바이트 단위로 같은 복사본입니다.
+`rustfs-launcher-windows-x86_64-latest-setup.exe`와 `rustfs-launcher-windows-x86_64-latest.exe`는 그 Windows
+설치 파일을 고정된 이름으로 둔 것입니다. macOS의 `-latest.dmg`와 `-latest.app.zip`도 같은 종류의 복사본입니다.
+버전 번호가 붙은 `-setup.exe` 또는 `.dmg`를 받으세요.
+
+### 내려받은 파일 확인
+
+같은 릴리스 페이지의 **Assets**에서 설치 파일과 함께 `SHA256SUMS`를 받으세요. 각 줄은 SHA-256 해시와 파일 이름입니다.
+
+Windows에서는 설치 파일이 있는 폴더에서 PowerShell을 엽니다.
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+macOS에서는 터미널에서 실행합니다.
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+해시는 `SHA256SUMS`에서 그 파일 이름 줄과 같아야 합니다. 영문 대소문자는 구분하지 않습니다. `.app.zip`을
+받았다면 그 파일 이름으로 같은 방식으로 확인하세요. 이후 릴리스에서는 그 릴리스의 파일 이름과 `SHA256SUMS`를
+사용하세요.
 
 ## Windows, 하나씩 따라 하기
 
 ### 1. 설치 파일 내려받기
 
 [릴리스 페이지](https://github.com/rustfs/launcher/releases)를 열고 최신 릴리스의 **Assets**를 펼친 뒤
-`-setup.exe`로 끝나는 파일을 클릭합니다. Edge나 Chrome은 흔치 않은 설치 파일에 경고를 띄우기도 합니다.
-물어보면 **유지**를 선택하세요.
+`rustfs-launcher-windows-x86_64-<version>-setup.exe`를 받습니다(1.0.6은
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`). 위에서 설명한 대로 `SHA256SUMS`와 비교하세요. Edge나
+Chrome은 흔치 않은 설치 파일에 경고를 띄우기도 합니다. 물어보면 **유지**를 선택하세요.
 
 ### 2. SmartScreen 넘어가기
 
@@ -82,16 +113,20 @@ RustFS는 지정한 폴더에 오브젝트를 저장하며, 그 폴더가 미리
 
 ### 6. Launch 누르기
 
-**Launch RustFS**를 클릭합니다. 1~2초 안에 상단이 **Service Online / Managed by Launcher**로 바뀌고, 입력
-폼이 잠기며, **App Logs**에 런처가 한 일(어떤 바이너리를 골랐는지, 어떤 인자로 실행했는지, 받은 프로세스
-ID는 무엇인지)이 표시됩니다.
+창은 **Data Path**와 **Launch RustFS**에서 열립니다. 스크롤하지 않아도 보입니다. 로그는 **Show logs**를
+누르기 전까지 숨겨져 있습니다. **Hide logs**는 패널을 다시 닫습니다. 시작 점검이나 업데이트 메시지는 패널을
+열지 않습니다.
 
-시작에 실패해도 이유는 같은 로그 창에 나옵니다. 데이터 폴더가 없거나 포트가 이미 사용 중인 경우가 가장
-흔합니다.
+**Launch RustFS**를 클릭합니다. 1~2초 안에 상태가 **Service Online / Managed by Launcher**로 바뀌고 입력
+폼이 잠깁니다.
+
+시작, 중지 또는 업데이트가 실패하면 첫 화면에 이유와 고치는 방법이 나옵니다. 로그 패널은 닫힌 채로 있습니다.
+데이터 폴더가 없거나 포트가 이미 사용 중인 경우가 가장 흔합니다. RustFS는 데이터 폴더 옆 `logs` 폴더에도
+자세한 내용을 씁니다. 줄 단위 출력이 필요할 때만 **Show logs**를 누르세요.
 
 ### 7. 스토리지 사용하기
 
-서비스가 온라인인 동안에는 위쪽 **API**와 **Console** 카드를 클릭할 수 있습니다. **Console**은 웹 화면을 열고,
+서비스가 온라인인 동안에는 실행 버튼 아래의 **API**와 **Console** 카드를 클릭할 수 있습니다. **Console**은 웹 화면을 열고,
 **API**는 S3 엔드포인트 자체를 엽니다. 브라우저로 열면 XML 응답만 보이는데, 이 주소는 S3 클라이언트용이기
 때문입니다.
 
@@ -122,9 +157,10 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ## macOS
 
-1. `.app.zip`의 압축을 풀고 **RustFS Launcher**를 **응용 프로그램**으로 끌어다 놓습니다.
-2. 배포 빌드가 Apple 공증을 받지 않아 첫 실행은 차단됩니다. 앱을 오른쪽 클릭해 **열기**를 고르거나,
-   터미널에서 격리 속성을 지우세요.
+1. `.dmg`를 열고 **RustFS Launcher**를 **응용 프로그램**으로 끌어다 놓습니다. `.app.zip`을 받았다면 압축을
+   풀고 같은 방식으로 옮기세요.
+2. 이 빌드는 공증되지 않아 첫 실행이 차단됩니다. 앱을 오른쪽 클릭하고 **열기**를 선택한 뒤 확인하세요.
+   터미널에서 격리 속성을 지우는 것은 선택 사항입니다.
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -136,6 +172,27 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 ## 화면 살펴보기
 
 ![시작 전 런처 화면](docs/images/launcher-ready.png)
+
+첫 화면은 **Data Path**, **Browse**, **Launch RustFS**이고, 제목 옆에 서비스 상태가 있습니다.
+로그는 열기 전까지 보이지 않습니다.
+
+### 언어
+
+상단 바의 언어 버튼(**中** / **EN** / **FR** / **日**)으로 화면 언어를 바꿀 수 있습니다.
+
+아직 언어를 고르지 않은 첫 실행에서는 운영 체제 언어를 따릅니다(`zh-CN`, `zh-Hant-TW`, `fr-CA`, `ja_JP`
+등 기본 언어 태그 기준). 그 언어가 앱에 들어 있는 4개 언어 중 하나이면 그 언어를 쓰고, 아니면 영어를 씁니다.
+
+앱 내 4개 언어는 简体中文(`zh-CN`), English(`en`), Français(`fr`), 日本語(`ja`)입니다.
+
+언어를 고르면 바로 적용되고 기억됩니다. 그 뒤에는 운영 체제 언어가 이 선택을 바꾸지 않습니다.
+
+한국어는 현재 앱 내 언어 선택에 포함되어 있지 않습니다. 언어를 직접 고르지 않으면 위 규칙에 따라 시스템 언어가
+지원되는 4개 언어 중 하나일 때만 해당 언어를 쓰고, 그렇지 않으면 영어를 씁니다.
+
+트레이 메뉴(**Show**, **Quit**), Windows 설치 마법사, 백엔드 오류 메시지 및 로그 내용은 영어입니다. macOS
+파일은 응용 프로그램으로 끌어 놓는 디스크 이미지이며, 번역된 설치 마법사가 아닙니다. 언어 버튼은 런처 창의 언어를
+바꿉니다.
 
 **상태 배지.** 첫 번째는 서버 상태입니다. *Service Online*은 설정한 호스트와 포트에서 무언가 응답하고 있다는
 뜻입니다. 두 번째는 그 프로세스의 주인이 누구인지 알려 줍니다.
@@ -151,8 +208,9 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 **Version & Updates.** 런처 버전과 내장된 RustFS 버전을 보여 주고, 요청하면 새 릴리스를 확인합니다.
 
-**로그.** *App Logs*는 런처 자신의 기록입니다. 무엇을 찾았고, 무엇을 실행했고, 왜 실패했는지가 나옵니다.
-*RustFS Output*은 서버가 콘솔에 출력한 내용인데, 최근 RustFS 빌드는 상세 로그를 파일에 쓰기 때문에 이 탭은
+**로그.** 시작할 때 숨겨져 있습니다. **Show logs**로 패널을 엽니다. 시작 점검과 업데이트 메시지는 패널을 열지
+않습니다. *App Logs*는 런처 자신의 기록입니다. 무엇을 찾았고, 무엇을 실행했고, 왜 실패했는지가 나옵니다.
+*RustFS Output*은 서버가 콘솔에 출력한 내용인데, 최근 RustFS 빌드는 상세 로그를 파일에 쓰기 때문에 연 뒤에도 이 탭은
 비어 있는 경우가 많습니다. Auto-scroll은 새 줄을 따라가고, Clear는 두 탭을 모두 비웁니다.
 
 ## 파일이 저장되는 곳
@@ -182,8 +240,8 @@ Version & Updates 카드에서 **Check for Updates**를 누르세요. 새 릴리
 **Detected Externally로 표시됨** — 해당 호스트와 포트에서 이미 RustFS가 응답하고 있지만, 이 런처가 실행한
 것이 아닙니다. 그 프로세스를 실행한 곳에서 종료하거나, 런처의 포트를 바꾸세요.
 
-**RustFS Output이 계속 비어 있음** — 최근 RustFS 빌드에서는 정상입니다. 로그는 데이터 폴더 옆 `logs`
-폴더에 기록됩니다. 런처의 동작은 App Logs에서 확인하세요.
+**RustFS Output이 계속 비어 있음** — 로그를 연 뒤에 이 탭은 조용한 경우가 많습니다. 최근 RustFS 빌드는 데이터 폴더 옆 `logs`
+폴더에 기록합니다. 런처의 동작은 다른 탭인 App Logs에서 확인하세요.
 
 **브라우저에 `AccessDenied` 같은 XML이 보임** — S3 API가 브라우저에 응답한 것일 뿐 고장이 아닙니다. 웹 화면이
 필요하면 **Console** 카드를 쓰고, API 주소는 S3 클라이언트에 넣어 주세요.
@@ -191,7 +249,7 @@ Version & Updates 카드에서 **Check for Updates**를 누르세요. 새 릴리
 **창이 사라짐** — 닫아도 숨겨질 뿐입니다. Windows에서는 알림 영역 아이콘, macOS에서는 Dock 아이콘을
 사용하세요.
 
-**macOS에서 앱을 "열 수 없습니다"라고 함** — 위 macOS 항목의 격리 속성 명령을 실행하세요.
+**macOS에서 앱을 "열 수 없습니다"라고 함** — 앱을 오른쪽 클릭하고 **열기**를 선택한 뒤 확인하세요. macOS 항목의 `xattr` 명령은 선택적 대안입니다.
 
 ## 직접 빌드하기
 

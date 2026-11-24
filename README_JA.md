@@ -9,38 +9,69 @@ RustFS Launcher は、S3 互換のオブジェクトストレージ [RustFS](htt
 サーバー本体はアプリに同梱されています。別途インストールするものはなく、ターミナルを開く必要も、
 設定ファイルを書く必要もありません。
 
-![RustFS が動作中のランチャー](docs/images/launcher-running.png)
+![RustFS はオンライン。Data Path は最初の画面に残り、ログは隠れている](docs/images/launcher-running.png)
 
 ## こんなときに使えます
 
 - Docker を使わずに、開発やテスト、個人のバックアップ先としてノート PC でオブジェクトストレージを動かす。
 - 好きな S3 クライアントや SDK を `127.0.0.1` に向けて、クラウドのバケットと同じように使う。
-- サーバーの状態、使用中のポート、リアルタイムのログを確認する。
+- サーバーの状態と使用中のポートを確認する。ログは自分で開くまで隠れている。
 - 好きなタイミングで RustFS を起動・停止する。サーバーが動いている間、ランチャーはトレイに常駐します。
 - ランチャー本体（同梱の RustFS も含めて）をアプリ内から更新する。
 
 ## ダウンロード
 
 [リリースページ](https://github.com/rustfs/launcher/releases) から、お使いの環境に合うファイルを取得します。
+現在の最新リリースは **1.0.6** です。
 
 | 環境 | ファイル |
 | --- | --- |
-| Windows 10 / 11（64 ビット） | `rustfs-launcher-windows-x86_64-<version>-setup.exe`（約 50 MB） |
-| macOS（Apple シリコン） | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS（Intel） | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11（64 ビット） | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS（Apple シリコン） | `rustfs-launcher-macos-aarch64-<version>.dmg` と `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS（Intel、x86_64） | リリース 1.0.6 にはありません |
 
-Windows on ARM でも動きます。x86_64 版がエミュレーションで実行されます。Linux 版のパッケージはまだありません。
+1.0.6 のファイル名は `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`、
+`rustfs-launcher-macos-aarch64-1.0.6.dmg`、`rustfs-launcher-macos-aarch64-1.0.6.app.zip` です。
+`rustfs-launcher-macos-x86_64-*` はなく、Intel Mac はこのリリースをインストールできません。
+
+Windows on ARM でも動きます。x86_64 版がエミュレーションで実行されます。Linux 向けのランチャーパッケージはありません。
 Linux では [RustFS のバイナリ](https://github.com/rustfs/rustfs/releases) を直接実行してください。
 
 ファイルサイズが大きいのは、RustFS サーバーがまるごとインストーラーに入っているためです。
+
+同じリリースで名前に `-latest` を含むファイルは、バージョン付きインストーラーとバイト単位で同じコピーです。
+`rustfs-launcher-windows-x86_64-latest-setup.exe` と `rustfs-launcher-windows-x86_64-latest.exe` は、その
+Windows インストーラーを安定したファイル名にしたものです。macOS の `-latest.dmg` と `-latest.app.zip` も同じ種類のコピーです。
+バージョン付きの `-setup.exe` または `.dmg` を優先してください。
+
+### ダウンロードを確認する
+
+同じリリースページの **Assets** から、インストーラーと一緒に `SHA256SUMS` を入手します。各行は SHA-256 ハッシュとファイル名です。
+
+Windows では、インストーラーのあるフォルダーで PowerShell を開きます。
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+macOS では、ターミナルで次を実行します。
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+ハッシュは `SHA256SUMS` の、そのファイル名の行と一致する必要があります。英字の大文字と小文字は区別しません。
+`.app.zip` を入手した場合は、そのファイル名で同じように確認します。以後のリリースでは、そのリリースのファイル名と
+`SHA256SUMS` を使ってください。
 
 ## Windows での手順
 
 ### 1. インストーラーをダウンロードする
 
 [リリースページ](https://github.com/rustfs/launcher/releases) を開き、最新リリースの **Assets** を展開して、
-`-setup.exe` で終わるファイルをクリックします。Edge や Chrome は、あまり見かけないインストーラーに警告を
-出すことがあります。確認されたら「保存」を選んでください。
+`rustfs-launcher-windows-x86_64-<version>-setup.exe` をダウンロードします（1.0.6 では
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`）。上の手順で `SHA256SUMS` と照合してください。Edge や
+Chrome は、あまり見かけないインストーラーに警告を出すことがあります。確認されたら「保存」を選んでください。
 
 ### 2. SmartScreen を通過する
 
@@ -86,16 +117,19 @@ RustFS は指定したフォルダーにオブジェクトを保存します。�
 
 ### 6. Launch を押す
 
-**Launch RustFS** をクリックします。1〜2 秒でヘッダーが **Service Online / Managed by Launcher** に変わり、
-フォームはロックされ、**App Logs** にランチャーの動作（選択したバイナリ、渡した引数、取得したプロセス ID）が
-表示されます。
+ウィンドウは **Data Path** と **Launch RustFS** から開きます。スクロールせずに届きます。ログは **Show logs**
+を押すまで隠れています。**Hide logs** でパネルを閉じます。起動時の確認や更新メッセージでは開きません。
 
-起動に失敗した場合も、理由は同じログ欄に出ます。よくあるのは、データフォルダーが存在しないケースと、
-ポートがすでに使われているケースです。
+**Launch RustFS** をクリックします。1〜2 秒で状態が **Service Online / Managed by Launcher** に変わり、
+フォームはロックされます。
+
+起動、停止、更新が失敗すると、最初の画面に理由と直し方が出ます。ログパネルは閉じたままです。よくあるのは、
+データフォルダーが存在しないケースと、ポートがすでに使われているケースです。RustFS はデータフォルダーの隣の
+`logs` フォルダーにも詳細を書きます。行ごとの出力が必要なときだけ **Show logs** を押してください。
 
 ### 7. ストレージを使う
 
-サービスがオンラインの間は、上部の **API** と **Console** のカードをクリックできます。**Console** は Web 画面を
+サービスがオンラインの間は、起動ボタンの下にある **API** と **Console** のカードをクリックできます。**Console** は Web 画面を
 開きます。**API** は S3 エンドポイントそのものを開くため、ブラウザーでは XML が返るだけです。このアドレスは
 S3 クライアントから使うためのものです。
 
@@ -128,9 +162,10 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 
 ## macOS
 
-1. `.app.zip` を展開し、**RustFS Launcher** を **アプリケーション** にドラッグします。
-2. 配布ビルドは Apple の公証を受けていないため、初回起動はブロックされます。アプリを右クリックして
-   **開く** を選ぶか、ターミナルで隔離属性を外してください。
+1. `.dmg` を開き、**RustFS Launcher** を **アプリケーション** にドラッグします。`.app.zip` を入手した場合は
+   展開して、同じようにドラッグします。
+2. これらのビルドは公証されていないため、初回起動はブロックされます。アプリを右クリックして **開く** を選び、
+   確認してください。ターミナルで隔離属性を外す操作は任意です。
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -142,6 +177,24 @@ aws --endpoint-url http://127.0.0.1:9000 s3 cp report.pdf s3://demo/
 ## 画面の見かた
 
 ![起動前のランチャー](docs/images/launcher-ready.png)
+
+最初の画面は **Data Path**、**Browse**、**Launch RustFS** で、タイトルの横にサービスの状態が出ます。
+ログは開くまで表示されません。
+
+### 言語
+
+上部バーの言語ボタン（**中** / **EN** / **FR** / **日**）で表示言語を切り替えられます。
+
+まだ言語を選んでいない初回起動では、OS の言語に従います（`zh-CN`、`zh-Hant-TW`、`fr-CA`、`ja_JP` などの
+主言語タグで判定）。それがアプリ内の 4 言語のどれかならその言語、そうでなければ英語です。
+
+アプリ内の 4 言語は 简体中文（`zh-CN`）、English（`en`）、Français（`fr`）、日本語（`ja`）です。
+
+選んだ言語はすぐに反映され、記憶されます。その後は OS の言語では上書きされません。
+
+トレイメニュー（**Show** と **Quit**）、Windows のセットアップウィザード、バックエンドのエラーメッセージ、
+ログの内容は英語のままです。macOS の配布物はアプリケーションフォルダへドラッグするディスクイメージで、翻訳された
+ウィザードではありません。言語ボタンが変えるのはランチャーのウィンドウです。
 
 **ステータス表示。** 1 つ目はサーバーの状態です。*Service Online* は、設定したホストとポートで何かが応答して
 いることを意味します。2 つ目は、そのプロセスの持ち主を示します。
@@ -158,8 +211,9 @@ Mode が *Locked* になるのは、このランチャー自身が RustFS を実
 **Version & Updates。** ランチャーのバージョンと、内蔵している RustFS のバージョンを表示し、指示すると
 新しいリリースを確認します。
 
-**ログ。** *App Logs* はランチャー自身の記録です（何を探し、何を起動し、なぜ失敗したか）。*RustFS Output* は
-サーバーがコンソールに出力した内容ですが、最近の RustFS は詳細なログをファイルに書くため、このタブは
+**ログ。** 起動時は隠れています。**Show logs** でパネルを開きます。起動時の確認や更新メッセージでは開きません。
+*App Logs* はランチャー自身の記録です（何を探し、何を起動し、なぜ失敗したか）。*RustFS Output* は
+サーバーがコンソールに出力した内容ですが、最近の RustFS は詳細なログをファイルに書くため、開いたあともこのタブは
 空のままのことがよくあります。Auto-scroll は新しい行を追いかけ、Clear は両方のタブを消去します。
 
 ## ファイルの置き場所
@@ -191,8 +245,8 @@ Version & Updates カードの **Check for Updates** を押します。新しい
 **Detected Externally と表示される** — そのホストとポートではすでに別の RustFS が応答しており、この
 ランチャーが起動したものではありません。起動した場所でそのプロセスを止めるか、別のポートを使ってください。
 
-**RustFS Output が空のまま** — 最近の RustFS では正常です。ログはデータフォルダーの隣の `logs` フォルダーに
-書き込まれます。ランチャー自身の動きは App Logs で確認できます。
+**RustFS Output が空のまま** — ログを開いたあと、このタブは静かなことが多いです。最近の RustFS はデータフォルダーの隣の `logs` フォルダーに
+書き込みます。ランチャー自身の動きはもう一方のタブ、App Logs で確認できます。
 
 **ブラウザーに `AccessDenied` のような XML が表示される** — S3 API がブラウザーに返しているだけで、
 故障ではありません。Web 画面が見たいときは **Console** カードを使い、API のアドレスは S3 クライアントに
@@ -201,7 +255,7 @@ Version & Updates カードの **Check for Updates** を押します。新しい
 **ウィンドウが消えた** — 閉じても隠れるだけです。Windows では通知領域のアイコン、macOS では Dock の
 アイコンから戻せます。
 
-**macOS で「開けません」と言われる** — 上の macOS の項にある隔離属性のコマンドを実行してください。
+**macOS で「開けません」と言われる** — アプリを右クリックして **開く** を選び、確認してください。macOS の項にある `xattr` コマンドは任意の代替手段です。
 
 ## 自分でビルドする
 

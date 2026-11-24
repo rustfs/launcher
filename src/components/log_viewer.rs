@@ -1,3 +1,4 @@
+use crate::i18n::use_i18n;
 use crate::types::{LogEntry, LogType};
 use leptos::prelude::*;
 use std::collections::VecDeque;
@@ -11,6 +12,7 @@ pub fn LogViewer(
     #[prop(into)] current_log_type: Signal<LogType>,
     #[prop(into)] set_current_log_type: WriteSignal<LogType>,
 ) -> impl IntoView {
+    let i18n = use_i18n();
     let (auto_scroll, set_auto_scroll) = signal(true);
     let logs_ref = NodeRef::<leptos::html::Div>::new();
 
@@ -37,7 +39,7 @@ pub fn LogViewer(
     view! {
         <div class="log-panel">
             <div class="log-header">
-                <div class="log-tabs" role="tablist" aria-label="Log sources">
+                <div class="log-tabs" role="tablist" aria-label=move || i18n.t().log_sources>
                     <button
                         class="log-tab"
                         class:active=move || current_log_type.get() == LogType::App
@@ -45,7 +47,7 @@ pub fn LogViewer(
                         aria-selected=move || current_log_type.get() == LogType::App
                         on:click=move |_| set_current_log_type.set(LogType::App)
                     >
-                        "App Logs"
+                        {move || i18n.t().app_logs}
                     </button>
                     <button
                         class="log-tab"
@@ -54,7 +56,7 @@ pub fn LogViewer(
                         aria-selected=move || current_log_type.get() == LogType::RustFS
                         on:click=move |_| set_current_log_type.set(LogType::RustFS)
                     >
-                        "RustFS Output"
+                        {move || i18n.t().rustfs_output}
                     </button>
                 </div>
                 <div class="log-actions">
@@ -64,10 +66,10 @@ pub fn LogViewer(
                             prop:checked=move || auto_scroll.get()
                             on:change=move |ev| set_auto_scroll.set(event_target_checked(&ev))
                         />
-                        "Auto-scroll"
+                        {move || i18n.t().auto_scroll}
                     </label>
-                    <button class="clear-btn" on:click=clear_logs title="Clear Logs">
-                        "Clear"
+                    <button class="clear-btn" on:click=clear_logs title=move || i18n.t().clear_logs>
+                        {move || i18n.t().clear}
                     </button>
                 </div>
             </div>
@@ -92,7 +94,7 @@ pub fn LogViewer(
                         LogType::RustFS => rustfs_logs.get().is_empty(),
                     }
                 }>
-                    <div class="empty-logs">"No logs available"</div>
+                    <div class="empty-logs">{move || i18n.t().no_logs}</div>
                 </Show>
             </div>
         </div>

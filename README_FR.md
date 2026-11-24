@@ -9,13 +9,13 @@ sur un bouton, et vous obtenez un point de terminaison S3 à l'adresse `http://1
 Le serveur est déjà inclus dans l'application. Rien d'autre à installer, aucun terminal à ouvrir, aucun fichier
 de configuration à modifier.
 
-![Le launcher avec RustFS en cours d'exécution](docs/images/launcher-running.png)
+![RustFS est en ligne. Data Path reste au premier écran et les journaux sont cachés](docs/images/launcher-running.png)
 
 ## À quoi ça sert
 
 - Faire tourner du stockage objet sur son portable pour développer, tester ou sauvegarder, sans Docker.
 - Diriger n'importe quel client ou SDK S3 vers `127.0.0.1` et l'utiliser comme un bucket dans le cloud.
-- Garder un œil sur le serveur : état, ports utilisés et journaux en direct.
+- Garder un œil sur le serveur : état et ports utilisés. Les journaux restent cachés tant que vous ne les ouvrez pas.
 - Démarrer et arrêter RustFS quand vous le voulez. Le launcher reste dans la zone de notification pendant que le
   serveur travaille.
 - Mettre à jour le launcher — et le RustFS qu'il embarque — depuis l'application elle-même.
@@ -24,25 +24,58 @@ de configuration à modifier.
 
 Prenez le fichier qui correspond à votre machine sur la
 [page des versions](https://github.com/rustfs/launcher/releases).
+La version **1.0.6** est la dernière version publiée.
 
 | Votre système | Fichier |
 | --- | --- |
-| Windows 10 / 11, 64 bits | `rustfs-launcher-windows-x86_64-<version>-setup.exe` (environ 50 Mo) |
-| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.app.zip` |
-| macOS, Intel | `rustfs-launcher-macos-x86_64-<version>.app.zip` |
+| Windows 10 / 11, 64 bits | `rustfs-launcher-windows-x86_64-<version>-setup.exe` |
+| macOS, Apple Silicon | `rustfs-launcher-macos-aarch64-<version>.dmg` et `rustfs-launcher-macos-aarch64-<version>.app.zip` |
+| macOS, Intel (x86_64) | Absent de la version 1.0.6 |
 
-Windows sur ARM fonctionne aussi : la version x86_64 s'exécute par émulation. Il n'y a pas encore de paquet
-Linux ; sous Linux, lancez directement le [binaire RustFS](https://github.com/rustfs/rustfs/releases).
+Pour 1.0.6, les fichiers sont `rustfs-launcher-windows-x86_64-1.0.6-setup.exe`,
+`rustfs-launcher-macos-aarch64-1.0.6.dmg` et `rustfs-launcher-macos-aarch64-1.0.6.app.zip`. Il n'y a pas de
+paquet `rustfs-launcher-macos-x86_64-*` : un Mac Intel ne peut pas installer cette version.
+
+Windows sur ARM fonctionne aussi : la version x86_64 s'exécute par émulation. Il n'y a pas de paquet Linux du
+launcher ; sous Linux, lancez directement le [binaire RustFS](https://github.com/rustfs/rustfs/releases).
 
 Les fichiers sont volumineux parce qu'un serveur RustFS complet est embarqué dans l'installeur.
+
+Les noms qui contiennent `-latest` sur cette même version sont des copies identiques des installeurs versionnés.
+`rustfs-launcher-windows-x86_64-latest-setup.exe` et `rustfs-launcher-windows-x86_64-latest.exe` sont cet
+installeur Windows sous des noms stables. Les fichiers macOS `-latest.dmg` et `-latest.app.zip` sont le même
+genre de copie. Préférez le `-setup.exe` ou le `.dmg` qui portent le numéro de version.
+
+### Vérifier le téléchargement
+
+Sur la même page de version, dans **Assets**, téléchargez `SHA256SUMS` à côté de l'installeur. Chaque ligne
+contient un condensé SHA-256 et le nom du fichier.
+
+Sous Windows, dans PowerShell, depuis le dossier de l'installeur :
+
+```powershell
+Get-FileHash .\rustfs-launcher-windows-x86_64-1.0.6-setup.exe -Algorithm SHA256
+```
+
+Sous macOS, dans le Terminal :
+
+```bash
+shasum -a 256 rustfs-launcher-macos-aarch64-1.0.6.dmg
+```
+
+Le condensé doit correspondre à la ligne de ce nom de fichier exact dans `SHA256SUMS`. La casse des lettres n'a
+pas d'importance. Si vous avez téléchargé le `.app.zip`, vérifiez ce nom de fichier de la même façon. Pour une
+version plus récente, utilisez les noms de fichiers et le `SHA256SUMS` de cette version.
 
 ## Windows, étape par étape
 
 ### 1. Télécharger l'installeur
 
 Ouvrez la [page des versions](https://github.com/rustfs/launcher/releases), dépliez **Assets** sur la version la
-plus récente et cliquez sur le fichier qui se termine par `-setup.exe`. Edge et Chrome signalent parfois les
-installeurs qu'ils voient rarement ; choisissez **Conserver** si le navigateur le demande.
+plus récente et téléchargez `rustfs-launcher-windows-x86_64-<version>-setup.exe` (pour 1.0.6,
+`rustfs-launcher-windows-x86_64-1.0.6-setup.exe`). Comparez-le à `SHA256SUMS` comme indiqué plus haut. Edge et
+Chrome signalent parfois les installeurs qu'ils voient rarement ; choisissez **Conserver** si le navigateur le
+demande.
 
 ### 2. Passer SmartScreen
 
@@ -88,16 +121,21 @@ Vos saisies sont mémorisées : le démarrage suivant tient en un clic.
 
 ### 6. Appuyer sur Launch
 
-Cliquez sur **Launch RustFS**. En une seconde ou deux, l'en-tête passe à **Service Online / Managed by
-Launcher**, le formulaire se verrouille et **App Logs** montre ce que le launcher a fait : quel binaire il a
-choisi, avec quels arguments, et l'identifiant du processus obtenu.
+La fenêtre s'ouvre sur **Data Path** et **Launch RustFS**. Inutile de faire défiler pour les atteindre. Les
+journaux restent cachés jusqu'à **Show logs**. **Hide logs** referme le panneau. Un contrôle au démarrage ou un
+message de mise à jour ne l'ouvre pas.
 
-Si le démarrage échoue, la raison figure dans le même panneau. Les cas les plus fréquents : un dossier de
-données inexistant et un port déjà pris.
+Cliquez sur **Launch RustFS**. En une seconde ou deux, l'état passe à **Service Online / Managed by
+Launcher** et le formulaire se verrouille.
+
+Si le démarrage, l'arrêt ou une mise à jour échoue, le premier écran indique la raison et comment la corriger.
+Le panneau des journaux reste fermé. Les échecs les plus fréquents : un dossier de données inexistant et un port
+déjà pris. RustFS écrit aussi le détail dans le dossier `logs` à côté du dossier de données. **Show logs** sert
+seulement si vous voulez le détail ligne à ligne.
 
 ### 7. Utiliser le stockage
 
-Tant que le service est en ligne, les cartes **API** et **Console** en haut deviennent cliquables. **Console**
+Tant que le service est en ligne, les cartes **API** et **Console** sous le bouton de lancement deviennent cliquables. **Console**
 ouvre l'interface web ; **API** ouvre le point de terminaison S3 lui-même, dont un navigateur ne reçoit qu'une
 réponse XML — cette adresse est faite pour les clients S3.
 
@@ -131,9 +169,10 @@ vous-même si vous n'en avez plus besoin.
 
 ## macOS
 
-1. Décompressez le `.app.zip` et glissez **RustFS Launcher** dans **Applications**.
-2. Le premier lancement est bloqué, car les versions publiées ne sont pas notariées par Apple. Faites un clic
-   droit sur l'application et choisissez **Ouvrir**, ou retirez l'attribut de quarantaine dans un terminal :
+1. Ouvrez le `.dmg` et glissez **RustFS Launcher** dans **Applications**. Si vous avez téléchargé le `.app.zip`,
+   décompressez-le et glissez l'application de la même façon.
+2. Le premier lancement est bloqué, car ces builds ne sont pas notariés. Faites un clic droit sur l'application,
+   choisissez **Ouvrir**, puis confirmez. Retirer l'attribut de quarantaine dans le Terminal est facultatif :
 
    ```bash
    xattr -cr "/Applications/RustFS Launcher.app"
@@ -146,6 +185,27 @@ vous-même si vous n'en avez plus besoin.
 ## Visite guidée de la fenêtre
 
 ![Le launcher avant le premier démarrage](docs/images/launcher-ready.png)
+
+Le premier écran montre **Data Path**, **Browse** et **Launch RustFS**, avec l'état du service à côté du titre.
+Les journaux n'apparaissent pas tant que vous ne les ouvrez pas.
+
+### Langue
+
+Utilisez les boutons de langue (**中** / **EN** / **FR** / **日**) dans la barre supérieure pour changer la
+langue de l'interface.
+
+Au premier lancement, tant que vous n'avez pas choisi de langue, l'application suit la langue du système (selon
+la sous-balise principale, par exemple `zh-CN`, `zh-Hant-TW`, `fr-CA` ou `ja_JP`). Si elle fait partie des
+4 langues intégrées, elle est utilisée ; sinon l'interface est en anglais.
+
+Les 4 langues intégrées sont 简体中文 (`zh-CN`), English (`en`), Français (`fr`) et 日本語 (`ja`).
+
+Dès que vous choisissez une langue, elle s'applique tout de suite et elle est mémorisée. La langue du système ne
+la remplace plus ensuite.
+
+Le menu de la zone de notification (**Show** et **Quit**), l'assistant d'installation Windows, les messages
+d'erreur du backend et les lignes de journal restent en anglais. Le paquet macOS est une image disque à glisser
+dans Applications, pas un assistant traduit. Les boutons de langue changent la fenêtre du launcher.
 
 **Les badges d'état.** Le premier parle du serveur : *Service Online* signifie que quelque chose répond sur
 l'hôte et le port configurés. Le second dit à qui appartient ce processus :
@@ -162,9 +222,10 @@ service en ligne. Mode n'est *Locked* que pendant que ce launcher exécute lui-m
 **Version & Updates.** Affiche la version du launcher et celle du RustFS intégré, et cherche une version plus
 récente quand vous le demandez.
 
-**Les journaux.** *App Logs*, c'est le launcher qui parle : ce qu'il a cherché, ce qu'il a démarré, pourquoi
+**Les journaux.** Cachés au lancement. **Show logs** ouvre le panneau ; les contrôles au démarrage et les messages
+de mise à jour ne l'ouvrent pas. *App Logs*, c'est le launcher qui parle : ce qu'il a cherché, ce qu'il a démarré, pourquoi
 quelque chose a échoué. *RustFS Output* montre ce que le serveur écrit sur sa console — les versions récentes de
-RustFS écrivent leurs journaux détaillés dans des fichiers, cet onglet reste donc souvent vide. Auto-scroll suit
+RustFS écrivent leurs journaux détaillés dans des fichiers, cet onglet reste donc souvent vide une fois ouvert. Auto-scroll suit
 les nouvelles lignes, Clear vide les deux onglets.
 
 ## Où atterrissent les fichiers
@@ -196,8 +257,9 @@ autre port d'API ou arrêtez ce programme. Même chose pour le port de la consol
 **Le badge affiche Detected Externally** — un RustFS répond déjà sur cet hôte et ce port, mais ce launcher ne
 l'a pas démarré. Arrêtez ce processus là où vous l'avez lancé, ou changez de port.
 
-**RustFS Output reste vide** — c'est normal avec les versions récentes de RustFS : elles écrivent leurs journaux
-dans le dossier `logs` voisin de votre dossier de données. Pour voir ce que fait le launcher, regardez App Logs.
+**RustFS Output reste vide** — une fois les journaux ouverts, cet onglet est souvent calme. Les versions récentes
+de RustFS écrivent dans le dossier `logs` voisin de votre dossier de données. L'autre onglet, App Logs, montre ce
+que fait le launcher.
 
 **Le navigateur affiche du XML du type `AccessDenied`** — c'est l'API S3 qui répond à un navigateur, rien n'est
 cassé. Pour une interface web, passez par la carte **Console** ; l'adresse de l'API, elle, est faite pour un
@@ -206,8 +268,8 @@ client S3.
 **La fenêtre a disparu** — la fermer ne fait que la masquer. Utilisez l'icône de la zone de notification sous
 Windows, ou celle du Dock sous macOS.
 
-**macOS dit que l'application « ne peut pas être ouverte »** — voyez la commande de quarantaine dans la section
-macOS.
+**macOS dit que l'application « ne peut pas être ouverte »** — faites un clic droit sur l'application, choisissez
+**Ouvrir**, puis confirmez. La commande `xattr` de la section macOS est une alternative facultative.
 
 ## Compiler soi-même
 
