@@ -329,7 +329,6 @@ pub fn App() -> impl IntoView {
         save_config(&config.get());
     });
 
-    let (show_tips, set_show_tips) = signal(true);
     let (toasts, set_toasts) = signal(Vec::<ToastMessage>::new());
     let (is_running, set_is_running) = signal(false);
     let (app_logs, set_app_logs) = signal(VecDeque::<LogEntry>::new());
@@ -1270,20 +1269,6 @@ pub fn App() -> impl IntoView {
 
     view! {
         <style>{LOGS_CSS}</style>
-        {move || show_tips.get().then(|| view! {
-            <div class="tips-banner" role="note">
-                <span class="tips-banner-icon" aria-hidden="true">"!"</span>
-                <span class="tips-banner-text">{move || i18n.t().banner_text}</span>
-                <button
-                    type="button"
-                    class="tips-banner-close"
-                    aria-label=move || i18n.t().banner_close
-                    on:click=move |_| set_show_tips.set(false)
-                >
-                    "×"
-                </button>
-            </div>
-        })}
         <main class="container" class:logs-open=move || screen().logs_visible>
             <Toast toasts=toasts remove_toast=remove_toast />
 

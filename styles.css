@@ -157,53 +157,6 @@ button {
   outline-offset: 2px;
 }
 
-.tips-banner {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px 8px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--card);
-  color: var(--warning);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.tips-banner-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  flex: none;
-  border-radius: var(--radius);
-  background: var(--warning);
-  color: var(--primary-foreground);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.tips-banner-text {
-  flex: 1;
-}
-
-.tips-banner-close {
-  padding: 0 4px;
-  border: none;
-  border-radius: var(--radius);
-  background: transparent;
-  color: inherit;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.7;
-}
-
-.tips-banner-close:hover {
-  opacity: 1;
-}
-
 .container {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
