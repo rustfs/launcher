@@ -740,6 +740,65 @@ mod tests {
         assert!(!stopping.launch_visible);
     }
 
+    /// The shell is a client-side Leptos view. Both screens stay on the
+    /// two-state model, and none of the sources that view is built from
+    /// still contain the desktop production warning.
+    #[test]
+    fn neither_screen_renders_a_production_warning_banner() {
+        let pre = first_screen_state(false, false, true, logs_open_by_default(), false);
+        let post = first_screen_state(true, false, false, false, false);
+        assert_eq!(pre.phase, ScreenPhase::PreStart);
+        assert_eq!(post.phase, ScreenPhase::PostStart);
+        assert!(pre.launch_visible && !pre.stop_visible);
+        assert!(post.stop_visible && !post.launch_visible);
+
+        let sources = [
+            ("src/app.rs", include_str!("app.rs")),
+            ("src/i18n.rs", include_str!("i18n.rs")),
+            ("src/main.rs", include_str!("main.rs")),
+            ("src/types.rs", include_str!("types.rs")),
+            ("src/logs.css", include_str!("logs.css")),
+            (
+                "src/components/config_form.rs",
+                include_str!("components/config_form.rs"),
+            ),
+            (
+                "src/components/log_viewer.rs",
+                include_str!("components/log_viewer.rs"),
+            ),
+            (
+                "src/components/toast.rs",
+                include_str!("components/toast.rs"),
+            ),
+            ("src/components/mod.rs", include_str!("components/mod.rs")),
+            ("styles.css", include_str!("../styles.css")),
+            ("index.html", include_str!("../index.html")),
+        ];
+
+        const MARKERS: &[&str] = &[
+            "tips-banner",
+            "banner_text",
+            "banner_close",
+            "show_tips",
+            "not recommended for production",
+            "不建议在生产使用",
+            "recommandée en production",
+            "本番環境での使用を推奨しません",
+            "Dismiss notice",
+            "关闭提示",
+            "Fermer l'avertissement",
+        ];
+
+        for (name, source) in sources {
+            for marker in MARKERS {
+                assert!(
+                    !source.contains(marker),
+                    "{name} still contains the production warning banner ({marker})"
+                );
+            }
+        }
+    }
+
     #[test]
     fn view_logs_is_the_only_way_the_panel_opens() {
         assert!(!logs_open_by_default());

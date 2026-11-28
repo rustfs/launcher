@@ -158,9 +158,7 @@ pub enum ActionLabel {
 }
 
 pub struct Strings {
-    // Banner and language switcher
-    pub banner_text: &'static str,
-    pub banner_close: &'static str,
+    // Language switcher
     pub language: &'static str,
 
     // Header and status
@@ -302,8 +300,6 @@ impl Strings {
 }
 
 pub const EN: Strings = Strings {
-    banner_text: "The desktop edition is not recommended for production use",
-    banner_close: "Dismiss notice",
     language: "Language",
 
     service_online: "Service online",
@@ -429,8 +425,6 @@ pub const EN: Strings = Strings {
 };
 
 pub const ZH: Strings = Strings {
-    banner_text: "桌面版本不建议在生产使用",
-    banner_close: "关闭提示",
     language: "语言",
 
     service_online: "服务在线",
@@ -559,8 +553,6 @@ pub const ZH: Strings = Strings {
 };
 
 pub const FR: Strings = Strings {
-    banner_text: "La version de bureau n'est pas recommandée en production",
-    banner_close: "Fermer l'avertissement",
     language: "Langue",
 
     service_online: "Service en ligne",
@@ -686,8 +678,6 @@ pub const FR: Strings = Strings {
 };
 
 pub const JA: Strings = Strings {
-    banner_text: "デスクトップ版は本番環境での使用を推奨しません",
-    banner_close: "通知を閉じる",
     language: "言語",
 
     service_online: "サービス稼働中",
